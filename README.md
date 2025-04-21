@@ -71,8 +71,6 @@ services:
       - PROXY_URL=http://ip-or-friendly-name-of-device.local
       # Optional: can specify log level if needed
       # - LOG_LEVEL=info
-    # Use host networking if running on the same network as clients
-    # network_mode: "host"
 ```
 
 Then run with Docker Compose:
