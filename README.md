@@ -16,7 +16,7 @@ This proxy:
 
 This allows automatic discovery to work even in network configurations where UDP broadcasts can't reach your server.
 
-
+![Jellyfin Discovery Proxy Diagram](JDP-Diagram.png)
 
 ## Common Use Cases
 
