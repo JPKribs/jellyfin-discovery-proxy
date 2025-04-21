@@ -70,55 +70,79 @@ build() {
   fi
 }
 
-# Setup Docker Buildx
+# Check if Docker is available
+check_docker() {
+  print_color "==> Checking Docker availability"
+  
+  # Check if Docker is installed
+  if ! command -v docker &>/dev/null; then
+    print_color "Error: Docker is not installed or not in PATH."
+    return 1
+  fi
+  
+  return 0
+}
+
+# Setup Docker Buildx for multi-platform builds
 setup_buildx() {
   print_color "==> Setting up Docker Buildx"
   
-  # Check if buildx is available
+  # Check if buildx plugin is available
   if ! docker buildx version &>/dev/null; then
-    print_color "Error: Docker buildx not available. Please make sure Docker is installed with buildx enabled."
-    exit 1
+    print_color "Error: Docker Buildx plugin is not available."
+    print_color "Please ensure you have Docker >= 19.03 and buildx plugin is installed."
+    return 1
   fi
   
   # Create a new builder instance if it doesn't exist
-  if ! docker buildx inspect buildx-builder &>/dev/null; then
-    print_color "   Creating new buildx builder instance..."
-    docker buildx create --name buildx-builder --use
+  if ! docker buildx inspect --builder custom-builder &>/dev/null; then
+    print_color "   Creating new Buildx builder instance"
+    docker buildx create --name custom-builder --use
   else
-    print_color "   Using existing buildx builder instance..."
-    docker buildx use buildx-builder
+    print_color "   Using existing Buildx builder instance"
+    docker buildx use custom-builder
   fi
   
-  # Bootstrap the builder
-  print_color "   Bootstrapping builder..."
-  docker buildx inspect --bootstrap
+  # Check if the builder is running
+  if ! docker buildx inspect --bootstrap &>/dev/null; then
+    print_color "   Bootstrapping Buildx builder"
+    docker buildx inspect --bootstrap
+  fi
+  
+  return 0
 }
 
 # Build docker image with buildx
-build_docker_with_buildx() {
-  setup_buildx
-  
-  print_color "==> Building multi-platform Docker image with Buildx"
-  
+build_docker() {
+  # Setup buildx
+  setup_buildx || {
+    print_color "Error: Failed to setup Docker Buildx"
+    return 1
+  }
+
+  print_color "==> Building Docker images"
+
   # Check for Dockerfile
   if [ ! -f "Dockerfile" ]; then
     print_color "Error: Dockerfile not found in current directory"
-    exit 1
+    return 1
   fi
-  
-  # Build and push image for multiple platforms
+
+  # Multi-platform build (amd64 and arm64)
+  print_color "   Building Docker image for amd64 and arm64"
   docker buildx build \
-    --platform linux/amd64,linux/arm64,linux/arm/v7 \
-    --tag "${APP_NAME}:${VERSION}" \
-    --tag "${APP_NAME}:latest" \
+    --platform linux/amd64,linux/arm64 \
+    --tag "jpkribs/${APP_NAME}:${VERSION}" \
+    --tag "jpkribs/${APP_NAME}:latest" \
     --build-arg VERSION="${VERSION}" \
     --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
     --build-arg VCS_REF="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')" \
-    --load \
+    --push \
     .
-  
-  print_color "   Docker image built for multiple platforms: ${APP_NAME}:${VERSION}"
-  print_color "   To push to a registry, use: docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 --tag your-registry/${APP_NAME}:${VERSION} --push ."
+
+  print_color "   Docker images built and pushed: ${APP_NAME}:${VERSION} and ${APP_NAME}:latest"
+
+  return 0
 }
 
 # Main build function that builds for all platforms
@@ -148,7 +172,7 @@ build_all() {
   (cd "$BUILD_DIR" && sha256sum * > "${APP_NAME}_${VERSION}_checksums.txt")
   
   # Build Docker image
-  build_docker_with_buildx
+  build_docker
   
   print_color "==> Build Complete!"
   print_color "   All binaries and archives are in the $BUILD_DIR directory"
@@ -161,7 +185,7 @@ show_help() {
   echo "Options:"
   echo "  -h, --help       Show this help message"
   echo "  -c, --clean      Clean the build directory"
-  echo "  -d, --docker     Build Docker image only using buildx"
+  echo "  -d, --docker     Build Docker image only"
   echo "  --linux          Build Linux binaries only"
   echo "  --windows        Build Windows binaries only"
   echo "  --mac            Build macOS binaries only"
@@ -181,7 +205,7 @@ case "$1" in
     exit 0
     ;;
   "-d"|"--docker")
-    build_docker_with_buildx
+    build_docker
     exit 0
     ;;
   "--linux")
