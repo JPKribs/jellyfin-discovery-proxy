@@ -76,9 +76,9 @@ setup_buildx() {
   
   # Check if buildx is available
   if ! docker buildx version &>/dev/null; then
-    print_color "Error: Docker Buildx not available. Please ensure you're using Docker 19.03 or newer."
+    print_color "Error: Docker buildx not available. Please make sure Docker is installed with buildx enabled."
     exit 1
-  }
+  fi
   
   # Create a new builder instance if it doesn't exist
   if ! docker buildx inspect buildx-builder &>/dev/null; then
@@ -104,7 +104,7 @@ build_docker_with_buildx() {
   if [ ! -f "Dockerfile" ]; then
     print_color "Error: Dockerfile not found in current directory"
     exit 1
-  }
+  fi
   
   # Build and push image for multiple platforms
   docker buildx build \
