@@ -42,18 +42,32 @@ docker run -d \
   yourusername/jellyfin-discovery-proxy
 ```
 
-Or with Docker Compose:
+### Docker Compose Example
 
-1. Edit the `docker-compose.yml` file to set your server URL:
-   ```yaml
-   environment:
-     - JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096
-   ```
+Create a `docker-compose.yml` file with the following contents:
 
-2. Run with Docker Compose:
-   ```bash
-   docker-compose up -d
-   ```
+```yaml
+version: '3'
+
+services:
+  jellyfin-discovery-proxy:
+    image: yourusername/jellyfin-discovery-proxy:latest
+    container_name: jellyfin-discovery-proxy
+    restart: unless-stopped
+    ports:
+      - "7359:7359/udp"
+    environment:
+      - JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096
+      # Optional: can specify log level if needed
+      # - LOG_LEVEL=info
+    # Use host networking if running on the same network as clients
+    # network_mode: "host"
+```
+
+Then run with Docker Compose:
+```bash
+docker-compose up -d
+```
 
 ## Building from Source
 
@@ -70,6 +84,32 @@ go build -o jellyfin-discovery-proxy
 # Run
 JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096 ./jellyfin-discovery-proxy
 ```
+
+## Using the Build Script
+
+The project includes a build script (`build.sh`) that can compile the application for various platforms:
+
+```bash
+# Make the script executable
+chmod +x build.sh
+
+# Build for all platforms (Windows, macOS, Linux, and OpenWRT)
+./build.sh
+
+# Build only for specific platforms
+./build.sh --linux    # Build only Linux binaries
+./build.sh --windows  # Build only Windows binaries
+./build.sh --mac      # Build only macOS binaries
+./build.sh --openwrt  # Build only OpenWRT/MIPS binaries
+
+# Build Docker image only
+./build.sh --docker
+
+# Clean the build directory
+./build.sh --clean
+```
+
+After running the build script, you'll find the binaries and archives in the `build` directory.
 
 ## Cross-Platform Compatibility
 
