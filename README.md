@@ -16,6 +16,8 @@ This proxy:
 
 This allows automatic discovery to work even in network configurations where UDP broadcasts can't reach your server.
 
+
+
 ## Common Use Cases
 
 ### VPN Client Connections
