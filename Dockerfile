@@ -23,5 +23,9 @@ COPY --from=builder /app/jellyfin-discovery-proxy .
 # Expose UDP port 7359
 EXPOSE 7359/udp
 
+# Environment variables with defaults
+ENV JELLYFIN_SERVER_URL="http://localhost:8096"
+ENV PROXY_URL=""
+
 # Run the application
 CMD ["./jellyfin-discovery-proxy"]

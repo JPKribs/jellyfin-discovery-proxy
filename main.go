@@ -70,8 +70,19 @@ func main() {
 		serverURL = "http://localhost:8096"
 	}
 
-	// Remove trailing slash if present
+	// Get proxy URL from environment variable
+	proxyURL := os.Getenv("PROXY_URL")
+	if proxyURL == "" {
+		log.Println("PROXY_URL environment variable not set, will use JELLYFIN_SERVER_URL for Address field")
+	} else {
+		log.Printf("PROXY_URL set to %s, will use for Address field in responses", proxyURL)
+	}
+
+	// Remove trailing slash if present from URLs
 	serverURL = strings.TrimSuffix(serverURL, "/")
+	if proxyURL != "" {
+		proxyURL = strings.TrimSuffix(proxyURL, "/")
+	}
 
 	log.Printf("Starting Jellyfin Discovery Proxy for server: %s", serverURL)
 
@@ -121,12 +132,12 @@ func main() {
 
 		// Check if this is a Jellyfin discovery request
 		if message == "Who is JellyfinServer?" {
-			go handleDiscoveryRequest(conn, addr, serverURL, cache)
+			go handleDiscoveryRequest(conn, addr, serverURL, proxyURL, cache)
 		}
 	}
 }
 
-func handleDiscoveryRequest(conn *net.UDPConn, addr *net.UDPAddr, serverURL string, cache *ServerInfoCache) {
+func handleDiscoveryRequest(conn *net.UDPConn, addr *net.UDPAddr, serverURL string, proxyURL string, cache *ServerInfoCache) {
 	log.Printf("Handling discovery request from %s", addr.String())
 
 	// Try to get info from cache first
@@ -147,9 +158,18 @@ func handleDiscoveryRequest(conn *net.UDPConn, addr *net.UDPAddr, serverURL stri
 		cache.Set(serverInfo)
 	}
 
+	// Determine which URL to use for the Address field
+	addressURL := ""
+
+	if proxyURL != "" {
+		addressURL = proxyURL
+	} else {
+		addressURL = serverURL
+	}
+
 	// Create response
 	response := JellyfinDiscoveryResponse{
-		Address:         serverURL,
+		Address:         addressURL,
 		Id:              serverInfo.Id,
 		Name:            serverInfo.ServerName,
 		EndpointAddress: nil,

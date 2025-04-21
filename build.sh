@@ -46,9 +46,6 @@ build() {
   
   print_color "==> Building for $GOOS/$GOARCH${GOMIPS:+ (GOMIPS=$GOMIPS)}${CGO:+ (CGO_ENABLED=$CGO)}"
   
-  # Prepare build flags for optimizing binary size
-  local BUILD_FLAGS="-trimpath -ldflags=\"-s -w\""
-  
   # Set environment variables and build
   if [ -n "$GOMIPS" ]; then
     env GOOS=$GOOS GOARCH=$GOARCH GOMIPS=$GOMIPS CGO_ENABLED=$CGO go build -trimpath -ldflags="-s -w" -o "$OUTPUT" main.go
@@ -73,12 +70,55 @@ build() {
   fi
 }
 
-# Build docker image
-build_docker() {
-  print_color "==> Building Docker image"
-  docker build -t "${APP_NAME}:${VERSION}" .
-  docker tag "${APP_NAME}:${VERSION}" "${APP_NAME}:latest"
-  print_color "   Docker image built: ${APP_NAME}:${VERSION}"
+# Setup Docker Buildx
+setup_buildx() {
+  print_color "==> Setting up Docker Buildx"
+  
+  # Check if buildx is available
+  if ! docker buildx version &>/dev/null; then
+    print_color "Error: Docker Buildx not available. Please ensure you're using Docker 19.03 or newer."
+    exit 1
+  }
+  
+  # Create a new builder instance if it doesn't exist
+  if ! docker buildx inspect buildx-builder &>/dev/null; then
+    print_color "   Creating new buildx builder instance..."
+    docker buildx create --name buildx-builder --use
+  else
+    print_color "   Using existing buildx builder instance..."
+    docker buildx use buildx-builder
+  fi
+  
+  # Bootstrap the builder
+  print_color "   Bootstrapping builder..."
+  docker buildx inspect --bootstrap
+}
+
+# Build docker image with buildx
+build_docker_with_buildx() {
+  setup_buildx
+  
+  print_color "==> Building multi-platform Docker image with Buildx"
+  
+  # Check for Dockerfile
+  if [ ! -f "Dockerfile" ]; then
+    print_color "Error: Dockerfile not found in current directory"
+    exit 1
+  }
+  
+  # Build and push image for multiple platforms
+  docker buildx build \
+    --platform linux/amd64,linux/arm64,linux/arm/v7 \
+    --tag "${APP_NAME}:${VERSION}" \
+    --tag "${APP_NAME}:latest" \
+    --build-arg VERSION="${VERSION}" \
+    --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+    --build-arg VCS_REF="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')" \
+    --load \
+    .
+  
+  print_color "   Docker image built for multiple platforms: ${APP_NAME}:${VERSION}"
+  print_color "   To push to a registry, use: docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 --tag your-registry/${APP_NAME}:${VERSION} --push ."
 }
 
 # Main build function that builds for all platforms
@@ -108,7 +148,7 @@ build_all() {
   (cd "$BUILD_DIR" && sha256sum * > "${APP_NAME}_${VERSION}_checksums.txt")
   
   # Build Docker image
-  build_docker
+  build_docker_with_buildx
   
   print_color "==> Build Complete!"
   print_color "   All binaries and archives are in the $BUILD_DIR directory"
@@ -121,7 +161,7 @@ show_help() {
   echo "Options:"
   echo "  -h, --help       Show this help message"
   echo "  -c, --clean      Clean the build directory"
-  echo "  -d, --docker     Build Docker image only"
+  echo "  -d, --docker     Build Docker image only using buildx"
   echo "  --linux          Build Linux binaries only"
   echo "  --windows        Build Windows binaries only"
   echo "  --mac            Build macOS binaries only"
@@ -141,7 +181,7 @@ case "$1" in
     exit 0
     ;;
   "-d"|"--docker")
-    build_docker
+    build_docker_with_buildx
     exit 0
     ;;
   "--linux")

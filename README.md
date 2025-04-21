@@ -2,32 +2,37 @@
 
 ## Overview
 
-This lightweight application solves a specific but common problem encountered when running a Jellyfin media server behind a VPN tunnel like WireGuard: the inability for clients on your local network to automatically discover your Jellyfin server.
+Jellyfin Discovery Proxy enables automatic server discovery for Jellyfin clients when UDP packets cannot reach your Jellyfin server. This is particularly useful when clients are connecting through VPN connections or across network boundaries where broadcast discovery typically fails.
 
-## The Problem
+## How It Works
 
-Jellyfin uses a UDP-based discovery protocol that operates on port 7359. When a client (such as a TV app, mobile app, or desktop client) first starts, it sends a UDP broadcast message "Who is JellyfinServer?" to port 7359 across the local network. Jellyfin servers listening on that port respond with a JSON packet containing their connection details, allowing clients to automatically detect and list available media servers without manual configuration.
+Jellyfin uses a UDP discovery protocol on port 7359 where clients broadcast a "Who is JellyfinServer?" message to automatically find servers on the network. 
 
-However, this discovery mechanism breaks when your Jellyfin server is:
+This proxy:
+1. Runs on a device that can receive these UDP broadcasts
+2. Listens for discovery requests on port 7359
+3. Forwards the request to your actual Jellyfin server via HTTP
+4. Returns the server information to clients in the expected format
 
-1. **Behind a VPN tunnel like WireGuard**: UDP broadcast packets don't pass through the tunnel
-2. **Running in a Docker container with custom networking**: UDP broadcast might not reach the container
-3. **On a different VLAN or subnet**: Broadcast domains might not reach the server
-4. **Running on a remote/cloud server**: Local clients can't discover remote servers via UDP broadcast
+This allows automatic discovery to work even in network configurations where UDP broadcasts can't reach your server.
 
-In these scenarios, users have to manually enter their server details on every client device instead of enjoying the convenience of auto-discovery.
+## Common Use Cases
 
-## The Solution
+### VPN Client Connections
 
-This discovery proxy acts as a bridge between your local network and your Jellyfin server by:
+When clients connect to your network through any VPN solution, they often can't discover Jellyfin servers through normal means. The proxy creates a "local server" entry on Jellyfin clients as if the server was directly on their network.
 
-1. Running on your local network (or a device that can receive local UDP broadcasts)
-2. Listening for Jellyfin discovery requests on UDP port 7359
-3. When a request is received, it calls the public API of your actual Jellyfin server
-4. Formats the response to match the Jellyfin discovery protocol format
-5. Sends the response back to the client
+### Docker and Container Environments
 
-The result: all your Jellyfin clients can automatically discover your server again, even though it's behind a VPN!
+In containerized environments, network isolation can prevent discovery requests from reaching your Jellyfin container.
+
+### Separated Network Segments
+
+Works across VLANs, subnets, or other network boundaries where broadcast traffic is filtered or blocked.
+
+### Remote Access Scenarios
+
+Enables discovery for remote Jellyfin servers as if they were on the local network.
 
 ## Running with Docker
 
@@ -58,6 +63,7 @@ services:
       - "7359:7359/udp"
     environment:
       - JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096
+      - PROXY_URL=https://jellyfin.example.com
       # Optional: can specify log level if needed
       # - LOG_LEVEL=info
     # Use host networking if running on the same network as clients
@@ -146,45 +152,38 @@ The application is configured using environment variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `JELLYFIN_SERVER_URL` | The URL to your Jellyfin server | `http://localhost:8096` |
+| `JELLYFIN_SERVER_URL` | The URL to your Jellyfin server for API calls | `http://localhost:8096` |
+| `PROXY_URL` | Optional URL to use in discovery responses (useful for proxies/NAT) | Uses `JELLYFIN_SERVER_URL` if not set |
 
-## Practical Use Cases
+### Address Selection Logic
 
-### Home Network with WireGuard VPN
+1. If `PROXY_URL` is set, it will be used as the `Address` in discovery responses
+2. If `PROXY_URL` is not set, then `JELLYFIN_SERVER_URL` will be used
+3. If neither is valid, the default `http://localhost:8096` will be used
 
-You have a Jellyfin server behind a WireGuard VPN for secure remote access, but local clients (smart TVs, mobile apps) can't discover it automatically.
+This configuration is particularly useful when your Jellyfin server is accessed internally using one URL (for API calls) but needs to be advertised externally using a different URL (for client connections).
 
-**Solution**: Run this proxy on a device inside your local network (like a Raspberry Pi, NAS, or even your router if it supports OpenWRT).
+## Deployment Recommendations
 
-### Docker Deployment with Complex Networking
+### Home Router or Network Device
 
-Your Jellyfin server runs in a Docker container with custom networking that blocks UDP broadcasts from reaching it.
+Install on a device that can receive broadcast traffic from all client devices. A router running OpenWRT, a Raspberry Pi, or a NAS device works well.
 
-**Solution**: Run this proxy in a separate container with host networking to bridge discovery requests to your Jellyfin container.
+### Cloud or Remote Server
 
-### Multi-VLAN Network Segmentation
+When your Jellyfin instance is hosted remotely, deploy the proxy locally on your network to make remote servers appear as local ones.
 
-You have your Jellyfin server on a separate VLAN from your client devices for improved security or network organization.
+### Multi-Network Setups
 
-**Solution**: Run the proxy on a device that can communicate across your VLANs or on each VLAN that contains client devices.
+For environments with multiple network segments, consider deploying one proxy instance per segment where clients need discovery.
 
-### Split Home/Cloud Setup
+## Features
 
-You run Jellyfin on a cloud server but want local clients to discover it as if it were on your home network.
-
-**Solution**: Run the proxy on your local network to relay discovery requests to your cloud instance.
-
-## Why This Matters
-
-For Jellyfin users, automatic discovery is a key part of what makes the experience seamless. Having to manually enter server details on every device (especially TV apps with clunky remote controls) creates unnecessary friction.
-
-This simple proxy preserves the plug-and-play experience of Jellyfin's auto-discovery while giving you the flexibility to deploy your server wherever and however you want.
-
-## Caching & Performance
-
-- Server information is cached for 24 hours to minimize API calls
-- If the Jellyfin server becomes unreachable, the proxy won't respond to discovery requests
-- Minimal resource usage makes it suitable for low-powered devices like OpenWRT routers
+- **24-hour Caching**: Server information is cached to minimize API calls
+- **Smart Fallback**: Won't respond if the Jellyfin server is unreachable
+- **Lightweight**: Minimal resource usage makes it suitable for small devices
+- **Cross-Platform**: Runs on virtually any operating system
+- **Dual URL Support**: Separate internal server URL and advertised client URL
 
 ## Troubleshooting
 
@@ -197,4 +196,4 @@ If you're having issues:
 
 ## License
 
-MIT
+This project is licensed under the [MIT License](https://github.com/JPKribs/jellyfin-discovery-proxy/blob/main/LICENSE).
