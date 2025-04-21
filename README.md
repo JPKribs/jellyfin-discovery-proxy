@@ -42,9 +42,11 @@ The easiest way to run this application is with Docker:
 # Pull and run with environment variable
 docker run -d \
   --name jellyfin-discovery-proxy \
+  --network=host \
   -p 7359:7359/udp \
-  -e JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096 \
-  yourusername/jellyfin-discovery-proxy
+  -e JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096 \
+  -e PROXY_URL=http://ip-or-friendly-name-of-device.local \
+  jpkribs/jellyfin-discovery-proxy
 ```
 
 ### Docker Compose Example
@@ -56,14 +58,15 @@ version: '3'
 
 services:
   jellyfin-discovery-proxy:
-    image: yourusername/jellyfin-discovery-proxy:latest
+    image: jpkribs/jellyfin-discovery-proxy:latest
     container_name: jellyfin-discovery-proxy
+    network_mode: host # Required: Bridged/VLAN networks typically do not recieve discovery broadcasts
     restart: unless-stopped
     ports:
       - "7359:7359/udp"
     environment:
-      - JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096
-      - PROXY_URL=https://jellyfin.example.com
+      - JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096
+      - PROXY_URL=http://ip-or-friendly-name-of-device.local
       # Optional: can specify log level if needed
       # - LOG_LEVEL=info
     # Use host networking if running on the same network as clients
@@ -81,14 +84,14 @@ If you prefer to build from source:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/jellyfin-discovery-proxy.git
+git clone https://github.com/jpkribs/jellyfin-discovery-proxy.git
 cd jellyfin-discovery-proxy
 
 # Build
 go build -o jellyfin-discovery-proxy
 
 # Run
-JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096 ./jellyfin-discovery-proxy
+PROXY_URL=http://ip-or-friendly-name-of-device.local JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096 ./jellyfin-discovery-proxy
 ```
 
 ## Using the Build Script
@@ -121,7 +124,7 @@ After running the build script, you'll find the binaries and archives in the `bu
 
 This application is designed to run on multiple platforms:
 
-### OpenWRT
+### OpenWRT - Untested
 
 The Go implementation can be cross-compiled for OpenWRT routers (including MIPS architectures) by using:
 
