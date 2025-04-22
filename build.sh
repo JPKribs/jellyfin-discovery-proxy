@@ -6,7 +6,7 @@ set -e
 
 # Application name and version
 APP_NAME="jellyfin-discovery-proxy"
-VERSION="1.0.0"
+VERSION="1.0.1"
 BUILD_DIR="./build"
 
 # Print colored text
