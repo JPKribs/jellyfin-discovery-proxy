@@ -18,6 +18,21 @@ This allows automatic discovery to work even in network configurations where UDP
 
 ![Jellyfin Discovery Proxy Diagram](JDP-Diagram.png)
 
+## Project Structure
+
+```
+jellyfin-discovery-proxy/
+├── Makefile                # Build system for cross-platform compilation
+├── project.conf            # Project metadata configuration
+├── main.go                 # Main application code
+├── Dockerfile              # Docker container definition
+├── README.md               # This documentation file
+├── LICENSE                 # MIT License
+├── scripts/                # Helper scripts
+│   └── docker-build.sh     # Docker multi-platform build helper
+└── build/                  # Output directory for compiled binaries (created during build)
+```
+
 ## Common Use Cases
 
 ### VPN Client Connections
@@ -48,6 +63,7 @@ docker run -d \
   -p 7359:7359/udp \
   -e JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096 \
   -e PROXY_URL=http://ip-or-friendly-name-of-device.local \
+  -e CACHE_DURATION=12 \
   jpkribs/jellyfin-discovery-proxy
 ```
 
@@ -62,13 +78,14 @@ services:
   jellyfin-discovery-proxy:
     image: jpkribs/jellyfin-discovery-proxy:latest
     container_name: jellyfin-discovery-proxy
-    network_mode: host # Required: Bridged/VLAN networks typically do not recieve discovery broadcasts
+    network_mode: host # Required: Bridged/VLAN networks typically do not receive discovery broadcasts
     restart: unless-stopped
     ports:
       - "7359:7359/udp"
     environment:
       - JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096
-      - PROXY_URL=http://ip-or-friendly-name-of-device.local
+      - PROXY_URL=http://ip-or-friendly-name-of-device.local # Optional: use a local name different that the server url
+      - CACHE_DURATION=12 # Optional: cache server info for 12 hours
       # Optional: can specify log level if needed
       # - LOG_LEVEL=info
 ```
@@ -91,34 +108,51 @@ cd jellyfin-discovery-proxy
 go build -o jellyfin-discovery-proxy
 
 # Run
-PROXY_URL=http://ip-or-friendly-name-of-device.local JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096 ./jellyfin-discovery-proxy
+PROXY_URL=http://ip-or-friendly-name-of-device.local JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096 CACHE_DURATION=6 ./jellyfin-discovery-proxy
 ```
 
-## Using the Build Script
+## Using the Makefile
 
-The project includes a build script (`build.sh`) that can compile the application for various platforms:
+The project includes a Makefile that can compile the application for various platforms:
 
 ```bash
-# Make the script executable
-chmod +x build.sh
-
 # Build for all platforms (Windows, macOS, Linux, and OpenWRT)
-./build.sh
+make
 
 # Build only for specific platforms
-./build.sh --linux    # Build only Linux binaries
-./build.sh --windows  # Build only Windows binaries
-./build.sh --mac      # Build only macOS binaries
-./build.sh --openwrt  # Build only OpenWRT/MIPS binaries
+make linux     # Build only Linux binaries
+make windows   # Build only Windows binaries
+make mac       # Build only macOS binaries (mac alias works)
+make macos     # Build only macOS binaries (macos alias works)
+make openwrt   # Build only OpenWRT/MIPS binaries
 
 # Build Docker image only
-./build.sh --docker
+make docker
 
 # Clean the build directory
-./build.sh --clean
+make clean
+
+# View all available options
+make help
 ```
 
-After running the build script, you'll find the binaries and archives in the `build` directory.
+After running the build commands, you'll find the binaries and archives in the `build` directory.
+
+## Configuration File
+
+The project uses a `project.conf` file to store metadata:
+
+```makefile
+# Application metadata
+APP_NAME := jellyfin-discovery-proxy
+VERSION := 1.0.1
+OWNER := jpkribs
+
+# Build directory
+BUILD_DIR := ./build
+```
+
+This configuration is used by the Makefile and Docker build process. When updating the project version or changing the owner, just modify this file.
 
 ## Cross-Platform Compatibility
 
@@ -129,27 +163,27 @@ This application is designed to run on multiple platforms:
 The Go implementation can be cross-compiled for OpenWRT routers (including MIPS architectures) by using:
 
 ```bash
-GOOS=linux GOARCH=mips GOMIPS=softfloat CGO_ENABLED=0 go build -trimpath -ldflags="-s -w"
+make openwrt
 ```
 
 The resulting binary is small enough to run on most OpenWRT devices with limited storage and memory.
 
 ### Windows, macOS, and Linux
 
-Cross-compilation for major desktop platforms is simple with Go:
+Cross-compilation for major desktop platforms is simple with the Makefile:
 
 ```bash
 # For Windows
-GOOS=windows GOARCH=amd64 go build -o jellyfin-discovery-proxy.exe
+make windows
 
 # For macOS
-GOOS=darwin GOARCH=amd64 go build -o jellyfin-discovery-proxy-mac
+make mac  # or make macos (both work)
 
 # For Linux
-GOOS=linux GOARCH=amd64 go build -o jellyfin-discovery-proxy-linux
+make linux
 ```
 
-## Configuration
+## Runtime Configuration
 
 The application is configured using environment variables:
 
@@ -157,6 +191,21 @@ The application is configured using environment variables:
 |----------|-------------|---------|
 | `JELLYFIN_SERVER_URL` | The URL to your Jellyfin server for API calls | `http://localhost:8096` |
 | `PROXY_URL` | Optional URL to use in discovery responses (useful for proxies/NAT) | Uses `JELLYFIN_SERVER_URL` if not set |
+| `CACHE_DURATION` | Number of hours to cache server information | `24` |
+
+### Cache Duration Options
+
+The `CACHE_DURATION` environment variable controls how long server information is cached:
+
+- Default: `24` (caches for 24 hours)
+- Any positive number: Caches for that many hours
+- `0`: Caches until the application restarts (useful for stable environments)
+- Not set: Uses the default of 24 hours
+
+Adjust this value based on your specific needs:
+- Lower values (1-6 hours) for frequently changing server configurations
+- Higher values (24+ hours) for stable environments
+- Set to `0` to minimize API calls in unchanging environments
 
 ### Address Selection Logic
 
@@ -182,7 +231,7 @@ For environments with multiple network segments, consider deploying one proxy in
 
 ## Features
 
-- **24-hour Caching**: Server information is cached to minimize API calls
+- **Configurable Caching**: Customize how long server information is cached
 - **Smart Fallback**: Won't respond if the Jellyfin server is unreachable
 - **Lightweight**: Minimal resource usage makes it suitable for small devices
 - **Cross-Platform**: Runs on virtually any operating system
