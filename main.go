@@ -195,7 +195,7 @@ func main() {
 		logf("INF", "Received %d bytes from %s: %s", n, addr.String(), message)
 
 		// Check if this is a Jellyfin discovery request
-		if message == "Who is JellyfinServer?" {
+		if strings.EqualFold(message, "Who is JellyfinServer?") {
 			go handleDiscoveryRequest(conn, addr, serverURL, proxyURL, cache)
 		}
 	}
