@@ -145,7 +145,7 @@ The project uses a `project.conf` file to store metadata:
 ```makefile
 # Application metadata
 APP_NAME := jellyfin-discovery-proxy
-VERSION := 1.0.1
+VERSION := 1.2.0
 OWNER := jpkribs
 
 # Build directory

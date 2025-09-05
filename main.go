@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -115,6 +116,61 @@ func GetCacheDuration() time.Duration {
 	return time.Duration(hours) * time.Hour
 }
 
+// MARK: isHostname()
+// Func - Checks if a URL contains a hostname rather than an IP address
+func isHostname(urlStr string) bool {
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return false
+	}
+
+	host, _, err := net.SplitHostPort(parsedURL.Host)
+	if err != nil {
+		host = parsedURL.Host
+	}
+
+	// Check if it's an IP address
+	if net.ParseIP(host) != nil {
+		return false
+	}
+
+	return true
+}
+
+// MARK: resolveHostnameToIP()
+// Func - Resolves a hostname URL to its IP address equivalent
+func resolveHostnameToIP(urlStr string) (string, error) {
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return "", err
+	}
+
+	host, port, err := net.SplitHostPort(parsedURL.Host)
+	if err != nil {
+		host = parsedURL.Host
+		port = ""
+	}
+
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return "", err
+	}
+
+	// Find the first IPv4 address
+	for _, ip := range ips {
+		if ipv4 := ip.To4(); ipv4 != nil {
+			newHost := ipv4.String()
+			if port != "" {
+				newHost = net.JoinHostPort(newHost, port)
+			}
+			parsedURL.Host = newHost
+			return parsedURL.String(), nil
+		}
+	}
+
+	return "", fmt.Errorf("no IPv4 address found for hostname %s", host)
+}
+
 // main()
 // Func - Main Function That Initializes and Runs the Jellyfin Discovery Proxy
 func main() {
@@ -131,6 +187,9 @@ func main() {
 		logln("INF", "PROXY_URL environment variable not set, will use JELLYFIN_SERVER_URL for Address field")
 	} else {
 		logf("INF", "PROXY_URL set to %s, will use for Address field in responses", proxyURL)
+		if isHostname(proxyURL) {
+			logln("INF", "PROXY_URL is a hostname, will broadcast both hostname and IP responses for Roku compatibility")
+		}
 	}
 
 	// Remove trailing slash if present from URLs
@@ -233,6 +292,28 @@ func handleDiscoveryRequest(conn *net.UDPConn, addr *net.UDPAddr, serverURL stri
 		addressURL = serverURL
 	}
 
+	// If proxy URL is a hostname, send two responses: hostname and IP
+	if proxyURL != "" && isHostname(proxyURL) {
+		// Send first response with hostname
+		sendDiscoveryResponse(conn, addr, addressURL, serverInfo)
+
+		// Try to resolve hostname to IP and send second response
+		ipURL, err := resolveHostnameToIP(proxyURL)
+		if err != nil {
+			logf("WRN", "Could not resolve hostname %s to IP: %v", proxyURL, err)
+		} else {
+			logf("INF", "Resolved %s to %s, sending second response", proxyURL, ipURL)
+			sendDiscoveryResponse(conn, addr, ipURL, serverInfo)
+		}
+	} else {
+		// Send single response
+		sendDiscoveryResponse(conn, addr, addressURL, serverInfo)
+	}
+}
+
+// MARK: sendDiscoveryResponse()
+// Func - Sends a single discovery response with the given address URL
+func sendDiscoveryResponse(conn *net.UDPConn, addr *net.UDPAddr, addressURL string, serverInfo *SystemInfoResponse) {
 	// Create response
 	response := JellyfinDiscoveryResponse{
 		Address:         addressURL,

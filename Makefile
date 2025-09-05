@@ -27,8 +27,7 @@ build-all: linux windows mac openwrt docker checksums
 
 # Linux builds
 .PHONY: linux
-linux: linux-amd64 linux-386
- linux-arm64 linux-armv7
+linux: linux-amd64 linux-386 linux-arm64 linux-armv7
 
 .PHONY: linux-amd64
 linux-amd64:
