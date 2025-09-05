@@ -236,6 +236,7 @@ For environments with multiple network segments, consider deploying one proxy in
 - **Lightweight**: Minimal resource usage makes it suitable for small devices
 - **Cross-Platform**: Runs on virtually any operating system
 - **Dual URL Support**: Separate internal server URL and advertised client URL
+- **Avahi Support**: Outputs both Avahi service.local and direct IP for usage on non-Avahi eligible devices
 
 ## Troubleshooting
 
