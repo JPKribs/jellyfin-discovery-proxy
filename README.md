@@ -60,7 +60,6 @@ The easiest way to run this application is with Docker:
 docker run -d \
   --name jellyfin-discovery-proxy \
   --network=host \
-  -p 7359:7359/udp \
   -e JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096 \
   -e PROXY_URL=http://ip-or-friendly-name-of-device.local \
   -e CACHE_DURATION=12 \
@@ -80,8 +79,6 @@ services:
     container_name: jellyfin-discovery-proxy
     network_mode: host # Required: Bridged/VLAN networks typically do not receive discovery broadcasts
     restart: unless-stopped
-    ports:
-      - "7359:7359/udp"
     environment:
       - JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096
       - PROXY_URL=http://ip-or-friendly-name-of-device.local # Optional: use a local name different that the server url
