@@ -203,30 +203,52 @@ func main() {
 	// Determine cache duration
 	cacheDuration := GetCacheDuration()
 
-	// Create UDP address for listening
-	addr, err := net.ResolveUDPAddr("udp", ":7359")
+	// Create UDP listeners (udp6 if available, plus udp4)
+	var conns []*net.UDPConn
+
+	// Try IPv6 first (this may be dual-stack on some OSes)
+	addr6, err := net.ResolveUDPAddr("udp6", "[::]:7359")
 	if err != nil {
-		logf("ERR", "Error resolving UDP address: %v", err)
+		logf("WRN", "Error resolving UDP6 address: %v", err)
+	} else if conn6, err := net.ListenUDP("udp6", addr6); err != nil {
+		logf("WRN", "UDP6 not available on port 7359: %v", err)
+	} else {
+		conns = append(conns, conn6)
+		logln("INF", "Listening for Jellyfin discovery requests on UDP6 [::]:7359")
+	}
+
+	// Always try IPv4
+	addr4, err := net.ResolveUDPAddr("udp4", "0.0.0.0:7359")
+	if err != nil {
+		logf("ERR", "Error resolving UDP4 address: %v", err)
+		os.Exit(1)
+	}
+	if conn4, err := net.ListenUDP("udp4", addr4); err != nil {
+		if len(conns) == 0 {
+			logf("ERR", "Error listening on UDP4 port 7359: %v", err)
+			os.Exit(1)
+		}
+		// On some systems, the UDP6 socket may already be dual-stack and occupy the port.
+		logf("WRN", "Could not bind UDP4 (possibly already covered by UDP6): %v", err)
+	} else {
+		conns = append(conns, conn4)
+		logln("INF", "Listening for Jellyfin discovery requests on UDP4 0.0.0.0:7359")
+	}
+
+	if len(conns) == 0 {
+		logln("ERR", "No UDP listeners could be created on port 7359")
 		os.Exit(1)
 	}
 
-	// Create UDP listener
-	conn, err := net.ListenUDP("udp", addr)
-	if err != nil {
-		logf("ERR", "Error listening on UDP port 7359: %v", err)
-		os.Exit(1)
+	for _, c := range conns {
+		defer c.Close()
 	}
-	defer conn.Close()
 
-	logln("INF", "Listening for Jellyfin discovery requests on UDP port 7359")
 	if cacheDuration == 0 {
 		logln("INF", "Server info will be cached until restart")
 	} else {
 		logf("INF", "Server info will be cached for %v", cacheDuration)
 	}
-
-	// Create a buffer for incoming messages
-	buffer := make([]byte, 1024)
 
 	// Initialize cache with determined duration
 	cache := NewServerInfoCache(cacheDuration)
@@ -237,12 +259,22 @@ func main() {
 		logf("WRN", "Could not fetch server info at startup: %v", err)
 		logln("WRN", "Will try again when discovery requests are received")
 	} else {
-		logf("INF", "Successfully fetched server info at startup. Server ID: %s, Name: %s",
-			serverInfo.Id, serverInfo.ServerName)
+		logf("INF", "Successfully fetched server info at startup. Server ID: %s, Name: %s", serverInfo.Id, serverInfo.ServerName)
 		cache.Set(serverInfo)
 	}
 
-	// Listen for incoming requests
+	// Listen for incoming requests on all sockets
+	for _, c := range conns {
+		go listenLoop(c, serverURL, proxyURL, cache)
+	}
+
+	select {}
+}
+
+// listenLoop()
+// Func - Listens for discovery requests on a single UDP socket
+func listenLoop(conn *net.UDPConn, serverURL, proxyURL string, cache *ServerInfoCache) {
+	buffer := make([]byte, 1024)
 	for {
 		n, addr, err := conn.ReadFromUDP(buffer)
 		if err != nil {
@@ -350,7 +382,6 @@ func fetchServerInfo(serverURL string) (*SystemInfoResponse, error) {
 	// Call the Jellyfin system info endpoint
 	infoURL := fmt.Sprintf("%s/System/Info/Public", serverURL)
 	logf("INF", "Fetching server info from: %s", infoURL)
-
 	resp, err := client.Get(infoURL)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %v", err)
