@@ -56,13 +56,35 @@ Enables discovery for remote Jellyfin servers as if they were on the local netwo
 The easiest way to run this application is with Docker:
 
 ```bash
-# Pull and run with environment variable
+# Pull and run with environment variables
 docker run -d \
   --name jellyfin-discovery-proxy \
   --network=host \
+  -p 8080:8080 \
   -e JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096 \
   -e PROXY_URL=http://ip-or-friendly-name-of-device.local \
   -e CACHE_DURATION=12 \
+  -e LOG_LEVEL=info \
+  jpkribs/jellyfin-discovery-proxy
+
+# Or with debug logging and IP blacklist
+docker run -d \
+  --name jellyfin-discovery-proxy \
+  --network=host \
+  -p 8080:8080 \
+  -e JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096 \
+  -e LOG_LEVEL=debug \
+  -e BLACKLIST=192.168.0.100,192.168.1.0/24 \
+  jpkribs/jellyfin-discovery-proxy
+
+# Or with separate IPv4 and IPv6 server URLs
+docker run -d \
+  --name jellyfin-discovery-proxy \
+  --network=host \
+  -p 8080:8080 \
+  -e JELLYFIN_SERVER_URL_IPV4=http://192.168.1.100:8096 \
+  -e JELLYFIN_SERVER_URL_IPV6=http://[2001:db8::1]:8096 \
+  -e LOG_LEVEL=info \
   jpkribs/jellyfin-discovery-proxy
 ```
 
@@ -79,12 +101,24 @@ services:
     container_name: jellyfin-discovery-proxy
     network_mode: host # Required: Bridged/VLAN networks typically do not receive discovery broadcasts
     restart: unless-stopped
+    ports:
+      - "8080:8080" # Web dashboard and health check
     environment:
+      # Legacy mode - use same URL for both IPv4 and IPv6
       - JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096
-      - PROXY_URL=http://ip-or-friendly-name-of-device.local # Optional: use a local name different that the server url
+      - PROXY_URL=http://ip-or-friendly-name-of-device.local # Optional: use a local name different than the server url
+
+      # Dual-stack mode - separate URLs for IPv4 and IPv6 (optional, overrides legacy mode)
+      # - JELLYFIN_SERVER_URL_IPV4=http://192.168.1.100:8096
+      # - JELLYFIN_SERVER_URL_IPV6=http://[2001:db8::1]:8096
+      # - PROXY_URL_IPV4=http://192.168.1.100:8096
+      # - PROXY_URL_IPV6=http://[2001:db8::1]:8096
+
       - CACHE_DURATION=12 # Optional: cache server info for 12 hours
-      # Optional: can specify log level if needed
-      # - LOG_LEVEL=info
+      - LOG_LEVEL=info # Optional: set log level (debug, info, warn, error)
+      - LOG_BUFFER_SIZE=1024 # Optional: number of log lines to keep in memory
+      - BLACKLIST= # Optional: comma-separated list of IPs/subnets to block (e.g., 192.168.0.1,192.168.1.0/24)
+      - NETWORK_INTERFACE= # Optional: bind to specific interface (e.g., eth0)
 ```
 
 Then run with Docker Compose:
@@ -104,8 +138,11 @@ cd jellyfin-discovery-proxy
 # Build
 go build -o jellyfin-discovery-proxy
 
-# Run
+# Run with default log level (info)
 PROXY_URL=http://ip-or-friendly-name-of-device.local JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096 CACHE_DURATION=6 ./jellyfin-discovery-proxy
+
+# Or with debug logging
+PROXY_URL=http://ip-or-friendly-name-of-device.local JELLYFIN_SERVER_URL=https://your-jellyfin-server.com:8096 ./jellyfin-discovery-proxy -log-level debug
 ```
 
 ## Using the Makefile
@@ -142,7 +179,7 @@ The project uses a `project.conf` file to store metadata:
 ```makefile
 # Application metadata
 APP_NAME := jellyfin-discovery-proxy
-VERSION := 1.2.0
+VERSION := 1.3.0
 OWNER := jpkribs
 
 # Build directory
@@ -182,13 +219,44 @@ make linux
 
 ## Runtime Configuration
 
-The application is configured using environment variables:
+The application is configured using environment variables and command-line flags:
+
+### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `JELLYFIN_SERVER_URL` | The URL to your Jellyfin server for API calls | `http://localhost:8096` |
-| `PROXY_URL` | Optional URL to use in discovery responses (useful for proxies/NAT) | Uses `JELLYFIN_SERVER_URL` if not set |
+| `JELLYFIN_SERVER_URL` | The URL to your Jellyfin server for API calls (legacy mode, used for both IPv4 and IPv6) | `http://localhost:8096` |
+| `JELLYFIN_SERVER_URL_IPV4` | The URL to your Jellyfin server for IPv4 API calls | Uses `JELLYFIN_SERVER_URL` if not set |
+| `JELLYFIN_SERVER_URL_IPV6` | The URL to your Jellyfin server for IPv6 API calls | Uses `JELLYFIN_SERVER_URL` if not set |
+| `PROXY_URL` | Optional URL to use in discovery responses (legacy mode, used for both IPv4 and IPv6) | Uses `JELLYFIN_SERVER_URL` if not set |
+| `PROXY_URL_IPV4` | Optional URL to use in IPv4 discovery responses | Uses `JELLYFIN_SERVER_URL_IPV4` if not set |
+| `PROXY_URL_IPV6` | Optional URL to use in IPv6 discovery responses | Uses `JELLYFIN_SERVER_URL_IPV6` if not set |
 | `CACHE_DURATION` | Number of hours to cache server information | `24` |
+| `LOG_LEVEL` | Logging verbosity level (`debug`, `info`, `warn`, `error`) | `info` |
+| `LOG_BUFFER_SIZE` | Number of log lines to retain in memory for dashboard | `1024` |
+| `BLACKLIST` | Comma-separated list of IP addresses/subnets to ignore (e.g., `192.168.0.1,192.168.1.0/24`) | None |
+| `NETWORK_INTERFACE` | Specific network interface to bind to (e.g., `eth0`, `wlan0`) | All interfaces |
+
+### Command-Line Flags
+
+| Flag | Description | Options | Default |
+|------|-------------|---------|---------|
+| `-log-level` | Set the logging verbosity level | `debug`, `info`, `warn`, `error` | `info` |
+
+**Log Level Details:**
+- `debug` - Verbose debugging information including hex dumps, goroutine tracking, and detailed internal state
+- `info` - Standard operational messages about discovery requests and responses
+- `warn` - Warning messages for non-critical issues
+- `error` - Error messages for critical failures only
+
+**Example Usage:**
+```bash
+# Run with debug logging
+./jellyfin-discovery-proxy -log-level debug
+
+# Run with error logging only
+JELLYFIN_SERVER_URL=http://server:8096 ./jellyfin-discovery-proxy -log-level error
+```
 
 ### Cache Duration Options
 
@@ -204,13 +272,41 @@ Adjust this value based on your specific needs:
 - Higher values (24+ hours) for stable environments
 - Set to `0` to minimize API calls in unchanging environments
 
-### Address Selection Logic
+### IPv4/IPv6 Dual-Stack Configuration
 
-1. If `PROXY_URL` is set, it will be used as the `Address` in discovery responses
-2. If `PROXY_URL` is not set, then `JELLYFIN_SERVER_URL` will be used
-3. If neither is valid, the default `http://localhost:8096` will be used
+The proxy supports separate URLs for IPv4 and IPv6 connections:
 
-This configuration is particularly useful when your Jellyfin server is accessed internally using one URL (for API calls) but needs to be advertised externally using a different URL (for client connections).
+**Legacy Mode (Backward Compatible):**
+```bash
+# Use the same URL for both IPv4 and IPv6
+JELLYFIN_SERVER_URL=http://your-server:8096
+PROXY_URL=http://your-proxy:8096
+```
+
+**Dual-Stack Mode:**
+```bash
+# Specify different URLs for IPv4 and IPv6
+JELLYFIN_SERVER_URL_IPV4=http://192.168.1.100:8096
+JELLYFIN_SERVER_URL_IPV6=http://[2001:db8::1]:8096
+PROXY_URL_IPV4=http://192.168.1.100:8096
+PROXY_URL_IPV6=http://[2001:db8::1]:8096
+```
+
+**Fallback Behavior:**
+- If only one IP version URL is set, it will be used for both IPv4 and IPv6
+- If neither IPv4 nor IPv6 specific URLs are set, falls back to legacy `JELLYFIN_SERVER_URL`
+- Proxy URLs default to their corresponding server URLs if not specified
+
+**Address Selection Logic:**
+
+1. IPv4 clients receive responses using `PROXY_URL_IPV4` (or `JELLYFIN_SERVER_URL_IPV4`)
+2. IPv6 clients receive responses using `PROXY_URL_IPV6` (or `JELLYFIN_SERVER_URL_IPV6`)
+3. This allows different network paths for IPv4 and IPv6 clients
+
+This configuration is particularly useful when:
+- Your Jellyfin server is dual-stacked with different addresses for IPv4 and IPv6
+- You want to optimize routing for each IP version
+- IPv4 and IPv6 clients need to reach the server through different network paths
 
 ## Deployment Recommendations
 
@@ -228,21 +324,100 @@ For environments with multiple network segments, consider deploying one proxy in
 
 ## Features
 
-- **Configurable Caching**: Customize how long server information is cached
+- **IPv4/IPv6 Dual-Stack Support**: Separate URLs and caches for IPv4 and IPv6 connections with automatic fallback
+- **Configurable Caching**: Customize how long server information is cached (per IP version)
 - **Smart Fallback**: Won't respond if the Jellyfin server is unreachable
 - **Lightweight**: Minimal resource usage makes it suitable for small devices
 - **Cross-Platform**: Runs on virtually any operating system
-- **Dual URL Support**: Separate internal server URL and advertised client URL
+- **Dual URL Support**: Separate internal server URL and advertised client URL (per IP version)
 - **Avahi Support**: Outputs both Avahi service.local and direct IP for usage on non-Avahi eligible devices
+- **Web Dashboard**: Built-in web interface on port 8080 showing server info, request statistics, and live logs with manual refresh
+- **Health Check Endpoint**: HTTP health check on port 8080 for monitoring systems
+- **IP/Subnet Blacklist**: Block specific IP addresses or entire subnets using CIDR notation from receiving discovery responses
+- **Network Interface Selection**: Bind to specific network interfaces for multi-homed systems
+- **In-Memory Log Buffer**: Configurable log retention for dashboard viewing
+
+## Web Dashboard
+
+The proxy includes a built-in web dashboard available at `http://localhost:8080` (or the IP of the device running the proxy). The dashboard provides:
+
+- Real-time server information for both IPv4 and IPv6 (name, ID, cache age)
+- Separate configuration display for IPv4 and IPv6 URLs
+- Request statistics (last request time, last IP, total requests)
+- Configuration overview including blacklisted IPs/subnets
+- Live log viewing with manual refresh button and timer
+- Uptime tracking
+
+### Health Check
+
+A health check endpoint is available at `http://localhost:8080/health` that returns HTTP 200 with "OK". This is useful for:
+- Docker health checks
+- Kubernetes liveness/readiness probes
+- External monitoring systems
+
+## Advanced Configuration
+
+### IP Blacklist
+
+Block specific IP addresses or entire subnets from receiving discovery responses:
+
+```bash
+# Block single IP
+BLACKLIST=192.168.0.100
+
+# Block multiple IPs
+BLACKLIST=192.168.0.100,192.168.0.101,10.0.0.50
+
+# Block entire subnets using CIDR notation
+BLACKLIST=192.168.1.0/24,10.0.0.0/8
+
+# Mix individual IPs and subnets
+BLACKLIST=192.168.0.100,192.168.1.0/24,10.0.0.5
+```
+
+Blacklisted IPs and subnets will receive no response to their discovery requests, and the requests will be logged as warnings. CIDR notation allows you to block entire network ranges efficiently.
+
+### Network Interface Selection
+
+Bind to a specific network interface instead of all interfaces:
+
+```bash
+# Bind to specific interface
+NETWORK_INTERFACE=eth0
+
+# Or for wireless
+NETWORK_INTERFACE=wlan0
+```
+
+This is useful for:
+- Multi-homed systems with multiple network interfaces
+- Limiting discovery to specific VLANs or subnets
+- Security hardening by restricting which networks can discover the server
+
+### Log Buffer Configuration
+
+Control how many log lines are kept in memory for the dashboard:
+
+```bash
+# Keep last 500 lines
+LOG_BUFFER_SIZE=500
+
+# Keep last 2000 lines
+LOG_BUFFER_SIZE=2000
+```
+
+Note: This only affects the dashboard view. All logs are still written to stdout/stderr for Docker logging.
 
 ## Troubleshooting
 
 If you're having issues:
 
 1. Check that UDP port 7359 is open on your firewall
-2. Verify your Jellyfin server is accessible at the URL specified
-3. Check the logs with `docker logs jellyfin-discovery-proxy`
-4. Make sure the `/System/Info/Public` endpoint is accessible on your Jellyfin server
+2. Check that TCP port 8080 is accessible for the dashboard
+3. Verify your Jellyfin server is accessible at the URL specified
+4. Check the logs with `docker logs jellyfin-discovery-proxy` or view them in the web dashboard
+5. Make sure the `/System/Info/Public` endpoint is accessible on your Jellyfin server
+6. Use the web dashboard at `http://<proxy-ip>:8080` to view real-time statistics and logs
 
 ## License
 

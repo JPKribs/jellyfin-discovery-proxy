@@ -2,8 +2,12 @@ name: Release Build
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
 
 jobs:
   build:
@@ -12,49 +16,107 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-        
-      - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/checkout@v4
         with:
-          go-version: '1.24'
-          
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Read project configuration
+        id: project_config
+        run: |
+          # Source the project.conf file to get variables
+          source project.conf
+          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "owner=$OWNER" >> $GITHUB_OUTPUT
+
       - name: Set up environment variables
         run: |
-          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+          echo "VERSION=${{ steps.project_config.outputs.version }}" >> $GITHUB_ENV
           echo "BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      - name: Check if version tag exists
+        id: check_tag
+        run: |
+          VERSION="${{ steps.project_config.outputs.version }}"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "⚠️ Tag v$VERSION already exists, skipping release"
+            echo "skip_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Tag v$VERSION does not exist, proceeding with release"
+            echo "skip_release=false" >> $GITHUB_OUTPUT
+          fi
       
       - name: Build project
+        if: steps.check_tag.outputs.skip_release == 'false'
         run: |
-          chmod +x ./build.sh
-          ./build.sh
-          
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/jellyfin-discovery-proxy:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/jellyfin-discovery-proxy:${{ env.VERSION }}
-          
+          if [ -f ./build.sh ]; then
+            chmod +x ./build.sh
+            ./build.sh
+          else
+            echo "No build.sh found, using Makefile or Go build"
+            if [ -f Makefile ]; then
+              make
+            else
+              mkdir -p build
+              GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o build/jellyfin-discovery-proxy-linux-amd64
+              GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o build/jellyfin-discovery-proxy-linux-arm64
+              GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o build/jellyfin-discovery-proxy-windows-amd64.exe
+              GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o build/jellyfin-discovery-proxy-darwin-amd64
+              GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o build/jellyfin-discovery-proxy-darwin-arm64
+            fi
+          fi
+
+      - name: Generate changelog
+        if: steps.check_tag.outputs.skip_release == 'false'
+        run: |
+          VERSION="${{ steps.project_config.outputs.version }}"
+
+          # Get the last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          # Generate changelog
+          if [ -z "$LAST_TAG" ]; then
+            echo "## What's Changed" > changelog.txt
+            echo "" >> changelog.txt
+            git log --pretty=format:"- %s (%h)" >> changelog.txt
+          else
+            echo "## What's Changed" > changelog.txt
+            echo "" >> changelog.txt
+            git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" >> changelog.txt
+          fi
+
+          echo "" >> changelog.txt
+          echo "## Installation" >> changelog.txt
+          echo "" >> changelog.txt
+          echo "Download the appropriate binary for your platform from the assets below." >> changelog.txt
+
       - name: Create Release
+        if: steps.check_tag.outputs.skip_release == 'false'
         id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ env.VERSION }}
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
+          body_path: changelog.txt
           draft: false
           prerelease: false
           files: |
             ./build/jellyfin-discovery-proxy_*_*.zip
             ./build/jellyfin-discovery-proxy_*_*.tar.gz
             ./build/jellyfin-discovery-proxy_*_checksums.txt
+            ./build/*.tar.gz
+            ./build/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        if: steps.check_tag.outputs.skip_release == 'false'
+        run: |
+          echo "✅ Release v${{ env.VERSION }} created successfully!"
+          echo "📦 Binaries built for multiple platforms"
+          echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ env.VERSION }}"
