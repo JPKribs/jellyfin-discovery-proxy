@@ -11,6 +11,10 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   docker:
     name: Build and Push Docker Image
