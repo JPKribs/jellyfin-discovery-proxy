@@ -22,15 +22,43 @@ This allows automatic discovery to work even in network configurations where UDP
 
 ```
 jellyfin-discovery-proxy/
-├── Makefile                # Build system for cross-platform compilation
-├── project.conf            # Project metadata configuration
-├── main.go                 # Main application code
-├── Dockerfile              # Docker container definition
-├── README.md               # This documentation file
-├── LICENSE                 # MIT License
-├── scripts/                # Helper scripts
-│   └── docker-build.sh     # Docker multi-platform build helper
-└── build/                  # Output directory for compiled binaries (created during build)
+├── Makefile                         # Build system for cross-platform compilation
+├── project.conf                     # Project metadata configuration
+├── Dockerfile                       # Docker container definition
+├── README.md                        # Documentation file
+├── LICENSE                          # MIT License
+├── go.mod                           # Go module definition
+├── cmd/                             # Application entry points
+│   └── jellyfin-discovery-proxy/
+│       └── main.go                  # Main application code (~270 lines)
+├── pkg/                             # Reusable packages
+│   ├── types/                       # Core type definitions
+│   │   └── types.go                 # Shared types, constants, and methods
+│   ├── logging/                     # Logging utilities
+│   │   └── logging.go               # Log functions and buffer management
+│   ├── cache/                       # Cache management
+│   │   └── cache.go                 # Server info cache with duration parsing
+│   ├── stats/                       # Statistics tracking
+│   │   └── stats.go                 # Request statistics
+│   ├── blacklist/                   # IP filtering
+│   │   └── blacklist.go             # IP and CIDR blacklist implementation
+│   ├── config/                      # Configuration
+│   │   └── config.go                # Environment variable loading
+│   ├── server/                      # Jellyfin API client
+│   │   └── jellyfin.go              # Server info fetching and utilities
+│   ├── discovery/                   # UDP discovery protocol
+│   │   └── discovery.go             # Discovery request handlers
+│   └── web/                         # HTTP dashboard
+│       ├── dashboard.go             # HTTP handlers with embedded assets
+│       └── assets/                  # Web assets (embedded in binary)
+│           ├── dashboard.html       # Dashboard UI
+│           ├── style.css            # Styling
+│           └── script.js            # Client-side functionality
+├── .github/                         # GitHub workflows
+│   └── workflows/
+│       ├── docker.yml               # Docker build and push automation
+│       └── release.yml              # Release automation
+└── build/                           # Output directory for compiled binaries (created during build)
 ```
 
 ## Common Use Cases
