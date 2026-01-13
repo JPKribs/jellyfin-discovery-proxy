@@ -116,9 +116,37 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up Docker Buildx
+        if: steps.check_tag.outputs.skip_release == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: steps.check_tag.outputs.skip_release == 'false'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        if: steps.check_tag.outputs.skip_release == 'false'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: |
+            ${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:latest
+            ${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:v${{ env.VERSION }}
+          cache-from: type=registry,ref=${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:buildcache
+          cache-to: type=registry,ref=${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:buildcache,mode=max
+
       - name: Release summary
         if: steps.check_tag.outputs.skip_release == 'false'
         run: |
           echo "✅ Release v${{ env.VERSION }} created successfully!"
           echo "📦 Binaries built for multiple platforms"
           echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ env.VERSION }}"
+          echo ""
+          echo "🐳 Docker image pushed:"
+          echo "   docker pull ${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:latest"
+          echo "   docker pull ${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:v${{ env.VERSION }}"

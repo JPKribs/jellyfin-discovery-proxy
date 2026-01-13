@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Docker tag to use (e.g., latest, v1.3.1)'
+        description: 'Docker tag to use (e.g., latest, v1.3.2)'
         required: true
         default: 'latest'
   push:
