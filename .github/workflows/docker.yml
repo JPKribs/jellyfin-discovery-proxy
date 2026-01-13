@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Docker tag to use (e.g., latest, v1.3.4)'
+        description: 'Docker tag to use (e.g., latest, 1.3.5)'
         required: true
         default: 'latest'
   push:
     tags:
-      - 'v*'
+      - '*'
 
 permissions:
   contents: read
@@ -65,8 +65,8 @@ jobs:
             echo "Building with custom tag: ${CUSTOM_TAG}"
           # Default: use version from project.conf
           else
-            TAGS="${TAGS},${OWNER}/${APP_NAME}:v${VERSION}"
-            echo "Building with version: v${VERSION}"
+            TAGS="${TAGS},${OWNER}/${APP_NAME}:${VERSION}"
+            echo "Building with version: ${VERSION}"
           fi
 
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT

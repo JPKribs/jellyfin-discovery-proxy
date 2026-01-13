@@ -133,7 +133,7 @@ jobs:
           push: true
           tags: |
             ${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:latest
-            ${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:v${{ env.VERSION }}
+            ${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:${{ env.VERSION }}
           cache-from: type=registry,ref=${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:buildcache
           cache-to: type=registry,ref=${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:buildcache,mode=max
 
