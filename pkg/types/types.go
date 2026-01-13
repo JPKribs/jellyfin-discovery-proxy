@@ -7,7 +7,7 @@ import (
 )
 
 // Version information
-const Version = "1.3.0"
+const Version = "1.3.1"
 
 // Log represents the severity of a log message
 type Log int
