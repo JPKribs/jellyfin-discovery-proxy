@@ -6,11 +6,12 @@ WORKDIR /app
 COPY go.mod ./
 RUN go mod download
 
-# Copy source code
-COPY *.go ./
+# Copy source code (entire project structure)
+COPY cmd/ ./cmd/
+COPY pkg/ ./pkg/
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o jellyfin-discovery-proxy
+RUN CGO_ENABLED=0 GOOS=linux go build -o jellyfin-discovery-proxy ./cmd/jellyfin-discovery-proxy
 
 # Final stage
 FROM alpine:latest
@@ -20,8 +21,9 @@ WORKDIR /app
 # Copy the binary from the builder stage
 COPY --from=builder /app/jellyfin-discovery-proxy .
 
-# Expose UDP port 7359
+# Expose UDP port 7359 and HTTP port 8080
 EXPOSE 7359/udp
+EXPOSE 8080/tcp
 
 # Environment variables with defaults
 ENV JELLYFIN_SERVER_URL="http://localhost:8096"

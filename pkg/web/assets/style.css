@@ -1,0 +1,124 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background-color: #0d1117;
+    color: #c9d1d9;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background-color: #161b22;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    border: 1px solid #30363d;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #21262d;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+h1 {
+    color: #58a6ff;
+    margin: 0;
+}
+
+.refresh-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.refresh-button {
+    background-color: #238636;
+    color: white;
+    border: 1px solid #2ea043;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.refresh-button:hover {
+    background-color: #2ea043;
+}
+
+.refresh-button:active {
+    background-color: #26a641;
+}
+
+.last-refresh {
+    color: #8b949e;
+    font-size: 0.9em;
+}
+
+h2 {
+    color: #8b949e;
+    margin-top: 30px;
+    margin-bottom: 15px;
+}
+
+p {
+    color: #8b949e;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 15px;
+    margin: 20px 0;
+}
+
+.info-box {
+    background-color: #0d1117;
+    padding: 15px;
+    border-radius: 6px;
+    border-left: 4px solid #58a6ff;
+    border: 1px solid #30363d;
+}
+
+.info-label {
+    font-weight: bold;
+    color: #8b949e;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-value {
+    color: #c9d1d9;
+    font-size: 1.1em;
+    margin-top: 8px;
+    font-weight: 500;
+}
+
+.log-window {
+    background-color: #010409;
+    color: #7ee787;
+    padding: 15px;
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85em;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    border: 1px solid #30363d;
+    line-height: 1.5;
+}
+
+.log-line {
+    margin: 2px 0;
+}
+
+strong {
+    color: #58a6ff;
+}

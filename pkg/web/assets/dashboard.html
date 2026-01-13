@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jellyfin Discovery Proxy Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Jellyfin Discovery Proxy Dashboard</h1>
+            <div class="refresh-controls">
+                <span class="last-refresh" id="refresh-timer">Since last refresh: 0s</span>
+                <button class="refresh-button" onclick="refreshPage()">Refresh</button>
+            </div>
+        </div>
+
+        <p><strong>Version:</strong> {{.Version}} | <strong>Uptime:</strong> {{.Uptime}}</p>
+
+        <h2>Configuration</h2>
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="info-label">IPv4 Server URL</div>
+                <div class="info-value">{{.ServerURLv4}}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">IPv6 Server URL</div>
+                <div class="info-value">{{.ServerURLv6}}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">IPv4 Proxy URL</div>
+                <div class="info-value">{{.ProxyURLv4}}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">IPv6 Proxy URL</div>
+                <div class="info-value">{{.ProxyURLv6}}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Blacklisted IPs</div>
+                <div class="info-value">{{.BlacklistedIPs}}</div>
+            </div>
+        </div>
+
+        <h2>IPv4 Server Information</h2>
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="info-label">Server Name</div>
+                <div class="info-value">{{.CachedServerNamev4}}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Server ID</div>
+                <div class="info-value">{{.CachedServerIDv4}}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Cache Age</div>
+                <div class="info-value">{{.CacheAgev4}}</div>
+            </div>
+        </div>
+
+        <h2>IPv6 Server Information</h2>
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="info-label">Server Name</div>
+                <div class="info-value">{{.CachedServerNamev6}}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Server ID</div>
+                <div class="info-value">{{.CachedServerIDv6}}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Cache Age</div>
+                <div class="info-value">{{.CacheAgev6}}</div>
+            </div>
+        </div>
+
+        <h2>Request Statistics</h2>
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="info-label">Last Request Time</div>
+                <div class="info-value">{{.LastRequestTime}}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Last Request IP</div>
+                <div class="info-value">{{.LastRequestIP}}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">Total Requests</div>
+                <div class="info-value">{{.TotalRequests}}</div>
+            </div>
+        </div>
+
+        <h2>Recent Logs</h2>
+        <div class="log-window">{{range .Logs}}<div class="log-line">{{.}}</div>{{end}}</div>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+</html>
