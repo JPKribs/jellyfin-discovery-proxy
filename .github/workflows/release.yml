@@ -110,11 +110,9 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            ./build/jellyfin-discovery-proxy_*_*.zip
-            ./build/jellyfin-discovery-proxy_*_*.tar.gz
-            ./build/jellyfin-discovery-proxy_*_checksums.txt
             ./build/*.tar.gz
             ./build/*.zip
+            ./build/*_checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
