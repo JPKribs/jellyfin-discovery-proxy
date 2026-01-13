@@ -142,11 +142,11 @@ jobs:
           if [ "${{ steps.check_tag.outputs.skip_release }}" == "false" ]; then
             echo "✅ Release v${{ env.VERSION }} created successfully!"
             echo "📦 Binaries built for multiple platforms"
-            echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ env.VERSION }}"
+            echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ env.VERSION }}"
           else
             echo "⚠️ Release v${{ env.VERSION }} already exists, skipped release creation"
           fi
           echo ""
           echo "🐳 Docker image pushed:"
           echo "   docker pull ${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:latest"
-          echo "   docker pull ${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:v${{ env.VERSION }}"
+          echo "   docker pull ${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:${{ env.VERSION }}"
