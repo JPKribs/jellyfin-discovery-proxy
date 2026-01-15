@@ -92,15 +92,18 @@ func ResolveHostnameToIP(urlStr string) (string, error) {
 		return "", err
 	}
 
-	// Find the first IPv4 address
+	// Find the first non-loopback IPv4 address
 	for _, ip := range ips {
 		if ipv4 := ip.To4(); ipv4 != nil {
-			newHost := ipv4.String()
-			if port != "" {
-				newHost = net.JoinHostPort(newHost, port)
+			// Skip loopback addresses (127.x.x.x)
+			if !ip.IsLoopback() {
+				newHost := ipv4.String()
+				if port != "" {
+					newHost = net.JoinHostPort(newHost, port)
+				}
+				parsedURL.Host = newHost
+				return parsedURL.String(), nil
 			}
-			parsedURL.Host = newHost
-			return parsedURL.String(), nil
 		}
 	}
 

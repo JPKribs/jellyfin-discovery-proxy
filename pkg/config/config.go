@@ -132,6 +132,15 @@ func Load() (*types.Config, error) {
 		logging.Logln(types.LogInfo, "No NETWORK_INTERFACE specified, binding to all interfaces")
 	}
 
+	// Get HTTP port from environment variable (default to 8080)
+	httpPort := os.Getenv("HTTP_PORT")
+	if httpPort == "" {
+		httpPort = "8080"
+		logging.Logln(types.LogInfo, "HTTP_PORT not set, using default port 8080")
+	} else {
+		logging.Logf(types.LogInfo, "HTTP_PORT set to: %s", httpPort)
+	}
+
 	return &types.Config{
 		ServerURLv4:      serverURLv4,
 		ServerURLv6:      serverURLv6,
@@ -139,5 +148,6 @@ func Load() (*types.Config, error) {
 		ProxyURLv6:       proxyURLv6,
 		NetworkInterface: networkInterface,
 		BindIP:           bindIP,
+		HTTPPort:         httpPort,
 	}, nil
 }

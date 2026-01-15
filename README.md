@@ -88,6 +88,7 @@ The easiest way to run this application is with Docker:
 docker run -d \
   --name jellyfin-discovery-proxy \
   --network=host \
+  -p 8080:8080 \
   -e JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096 \
   -e PROXY_URL=http://ip-or-friendly-name-of-device.local \
   -e CACHE_DURATION=12 \
@@ -98,6 +99,7 @@ docker run -d \
 docker run -d \
   --name jellyfin-discovery-proxy \
   --network=host \
+  -p 8080:8080 \
   -e JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096 \
   -e LOG_LEVEL=debug \
   -e BLACKLIST=192.168.0.100,192.168.1.0/24 \
@@ -107,6 +109,7 @@ docker run -d \
 docker run -d \
   --name jellyfin-discovery-proxy \
   --network=host \
+  -p 8080:8080 \
   -e JELLYFIN_SERVER_URL_IPV4=http://192.168.1.100:8096 \
   -e JELLYFIN_SERVER_URL_IPV6=http://[2001:db8::1]:8096 \
   -e LOG_LEVEL=info \
@@ -126,6 +129,8 @@ services:
     container_name: jellyfin-discovery-proxy
     network_mode: host # Required: Bridged/VLAN networks typically do not receive discovery broadcasts
     restart: unless-stopped
+    ports:
+      - "8080:8080" # Web dashboard and health check
     environment:
       # Legacy mode - use same URL for both IPv4 and IPv6
       - JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096
@@ -137,6 +142,7 @@ services:
       # - PROXY_URL_IPV4=http://192.168.1.100:8096
       # - PROXY_URL_IPV6=http://[2001:db8::1]:8096
 
+      - HTTP_PORT=8080 # Optional: port for web dashboard and health check
       - CACHE_DURATION=12 # Optional: cache server info for 12 hours
       - LOG_LEVEL=info # Optional: set log level (debug, info, warn, error)
       - LOG_BUFFER_SIZE=1024 # Optional: number of log lines to keep in memory
@@ -202,7 +208,7 @@ The project uses a `project.conf` file to store metadata:
 ```makefile
 # Application metadata
 APP_NAME := jellyfin-discovery-proxy
-VERSION := 1.3.5
+VERSION := 1.4.0
 OWNER := jpkribs
 
 # Build directory
@@ -254,6 +260,7 @@ The application is configured using environment variables and command-line flags
 | `PROXY_URL` | Optional URL to use in discovery responses (legacy mode, used for both IPv4 and IPv6) | Uses `JELLYFIN_SERVER_URL` if not set |
 | `PROXY_URL_IPV4` | Optional URL to use in IPv4 discovery responses | Uses `JELLYFIN_SERVER_URL_IPV4` if not set |
 | `PROXY_URL_IPV6` | Optional URL to use in IPv6 discovery responses | Uses `JELLYFIN_SERVER_URL_IPV6` if not set |
+| `HTTP_PORT` | Port for the web dashboard and health check endpoint | `8080` |
 | `CACHE_DURATION` | Number of hours to cache server information | `24` |
 | `LOG_LEVEL` | Logging verbosity level (`debug`, `info`, `warn`, `error`) | `info` |
 | `LOG_BUFFER_SIZE` | Number of log lines to retain in memory for dashboard | `1024` |
@@ -362,7 +369,7 @@ For environments with multiple network segments, consider deploying one proxy in
 
 ## Web Dashboard
 
-The proxy includes a built-in web dashboard available at `http://localhost:8080` (or the IP of the device running the proxy). The dashboard provides:
+The proxy includes a built-in web dashboard available at `http://localhost:8080` (or the IP of the device running the proxy, configurable via `HTTP_PORT` environment variable). The dashboard provides:
 
 - Real-time server information for both IPv4 and IPv6 (name, ID, cache age)
 - Separate configuration display for IPv4 and IPv6 URLs
@@ -371,9 +378,11 @@ The proxy includes a built-in web dashboard available at `http://localhost:8080`
 - Live log viewing with manual refresh button and timer
 - Uptime tracking
 
+![Jellyfin Discovery Proxy Dashboard](Dashboard.png)
+
 ### Health Check
 
-A health check endpoint is available at `http://localhost:8080/health` that returns HTTP 200 with "OK". This is useful for:
+A health check endpoint is available at `http://localhost:8080/health` (or your configured HTTP_PORT) that returns HTTP 200 with "OK". This is useful for:
 - Docker health checks
 - Kubernetes liveness/readiness probes
 - External monitoring systems

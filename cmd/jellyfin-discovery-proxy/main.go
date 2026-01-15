@@ -211,7 +211,7 @@ func fetchInitialServerInfo(serverURLv4, serverURLv6 string, cacheV4, cacheV6 *t
 // startHTTPServer starts the HTTP server for the dashboard
 func startHTTPServer(cacheV4, cacheV6 *types.ServerInfoCache, cfg *types.Config, requestStats *types.RequestStats, ipBlacklist *types.IPBlacklist) *http.Server {
 	httpServer := &http.Server{
-		Addr: ":8080",
+		Addr: fmt.Sprintf(":%s", cfg.HTTPPort),
 	}
 
 	http.HandleFunc("/health", web.HealthCheckHandler)
@@ -219,9 +219,9 @@ func startHTTPServer(cacheV4, cacheV6 *types.ServerInfoCache, cfg *types.Config,
 	http.HandleFunc("/static/", web.StaticFileHandler)
 
 	go func() {
-		logging.Logln(types.LogInfo, "Starting HTTP server on port 8080")
-		logging.Logln(types.LogInfo, "Dashboard available at http://localhost:8080")
-		logging.Logln(types.LogInfo, "Health check available at http://localhost:8080/health")
+		logging.Logf(types.LogInfo, "Starting HTTP server on port %s", cfg.HTTPPort)
+		logging.Logf(types.LogInfo, "Dashboard available at http://localhost:%s", cfg.HTTPPort)
+		logging.Logf(types.LogInfo, "Health check available at http://localhost:%s/health", cfg.HTTPPort)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logging.Logf(types.LogError, "HTTP server error: %v", err)
 		}
