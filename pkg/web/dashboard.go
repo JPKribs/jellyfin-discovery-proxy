@@ -18,6 +18,9 @@ var styleCSS string
 //go:embed assets/script.js
 var scriptJS string
 
+//go:embed assets/favicon.ico
+var faviconICO []byte
+
 // StartTime holds the application start time for uptime calculation
 var StartTime time.Time
 
@@ -122,4 +125,10 @@ func StaticFileHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", file.contentType)
 	w.Write([]byte(file.content))
+}
+
+// FaviconHandler serves the favicon
+func FaviconHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/x-icon")
+	w.Write(faviconICO)
 }

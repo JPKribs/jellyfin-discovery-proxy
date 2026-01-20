@@ -16,6 +16,7 @@ import (
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/cache"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/config"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/discovery"
+	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/hooks"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/logging"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/server"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/stats"
@@ -50,6 +51,17 @@ func main() {
 
 	// Initialize request stats
 	requestStats := stats.New()
+
+	// Load hook configuration
+	hookConfig := hooks.LoadHookConfig()
+	if hookConfig.OnReceiveURL != "" || hookConfig.OnReceiveCmd != "" {
+		logging.Logf(types.LogInfo, "onReceive hook configured")
+		logging.Logf(types.LogDebug, "onReceive URL: %s, CMD: %s", hookConfig.OnReceiveURL, hookConfig.OnReceiveCmd)
+	}
+	if hookConfig.OnSendURL != "" || hookConfig.OnSendCmd != "" {
+		logging.Logf(types.LogInfo, "onSend hook configured")
+		logging.Logf(types.LogDebug, "onSend URL: %s, CMD: %s", hookConfig.OnSendURL, hookConfig.OnSendCmd)
+	}
 
 	logging.Logln(types.LogInfo, "=== Jellyfin Discovery Proxy Starting ===")
 	logging.Logf(types.LogInfo, "Version: %s", types.Version)
@@ -103,7 +115,7 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
 	// Start listeners
-	startListeners(ctx, conns, cfg, cacheV4, cacheV6, ipBlacklist, requestStats)
+	startListeners(ctx, conns, cfg, cacheV4, cacheV6, ipBlacklist, requestStats, hookConfig)
 
 	logging.Logln(types.LogDebug, "Main thread waiting for shutdown signal")
 
@@ -217,6 +229,7 @@ func startHTTPServer(cacheV4, cacheV6 *types.ServerInfoCache, cfg *types.Config,
 	http.HandleFunc("/health", web.HealthCheckHandler)
 	http.HandleFunc("/", web.DashboardHandler(cacheV4, cacheV6, cfg.ServerURLv4, cfg.ServerURLv6, cfg.ProxyURLv4, cfg.ProxyURLv6, requestStats, ipBlacklist, logging.LogBuffer, types.Version))
 	http.HandleFunc("/static/", web.StaticFileHandler)
+	http.HandleFunc("/favicon.ico", web.FaviconHandler)
 
 	go func() {
 		logging.Logf(types.LogInfo, "Starting HTTP server on port %s", cfg.HTTPPort)
@@ -231,17 +244,17 @@ func startHTTPServer(cacheV4, cacheV6 *types.ServerInfoCache, cfg *types.Config,
 }
 
 // startListeners starts all UDP listener goroutines
-func startListeners(ctx context.Context, conns []*net.UDPConn, cfg *types.Config, cacheV4, cacheV6 *types.ServerInfoCache, ipBlacklist *types.IPBlacklist, requestStats *types.RequestStats) {
+func startListeners(ctx context.Context, conns []*net.UDPConn, cfg *types.Config, cacheV4, cacheV6 *types.ServerInfoCache, ipBlacklist *types.IPBlacklist, requestStats *types.RequestStats, hookConfig *hooks.HookConfig) {
 	for i, c := range conns {
 		logging.Logf(types.LogDebug, "Starting listener goroutine %d for %s", i, c.LocalAddr())
 		// Determine if this is IPv4 or IPv6 listener
 		isIPv6 := strings.Contains(c.LocalAddr().String(), "[")
 		if isIPv6 {
 			logging.Logf(types.LogDebug, "Listener %d is IPv6, using IPv6 URLs and cache", i)
-			go discovery.ListenLoop(ctx, c, cfg.ServerURLv6, cfg.ProxyURLv6, cacheV6, ipBlacklist, requestStats)
+			go discovery.ListenLoop(ctx, c, cfg.ServerURLv6, cfg.ProxyURLv6, cacheV6, ipBlacklist, requestStats, hookConfig)
 		} else {
 			logging.Logf(types.LogDebug, "Listener %d is IPv4, using IPv4 URLs and cache", i)
-			go discovery.ListenLoop(ctx, c, cfg.ServerURLv4, cfg.ProxyURLv4, cacheV4, ipBlacklist, requestStats)
+			go discovery.ListenLoop(ctx, c, cfg.ServerURLv4, cfg.ProxyURLv4, cacheV4, ipBlacklist, requestStats, hookConfig)
 		}
 	}
 }

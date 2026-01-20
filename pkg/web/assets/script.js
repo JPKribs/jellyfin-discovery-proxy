@@ -1,5 +1,6 @@
 let refreshTime = Date.now();
 
+// updateTimer updates the elapsed time display.
 function updateTimer() {
     const elapsed = Math.floor((Date.now() - refreshTime) / 1000);
     const minutes = Math.floor(elapsed / 60);
@@ -15,10 +16,10 @@ function updateTimer() {
     document.getElementById('refresh-timer').textContent = 'Since last refresh: ' + timeStr;
 }
 
+// refreshPage reloads the current page.
 function refreshPage() {
     location.reload();
 }
 
-// Update timer every second
 setInterval(updateTimer, 1000);
 updateTimer();
