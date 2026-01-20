@@ -88,7 +88,6 @@ The easiest way to run this application is with Docker:
 docker run -d \
   --name jellyfin-discovery-proxy \
   --network=host \
-  -p 8080:8080 \
   -e JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096 \
   -e PROXY_URL=http://ip-or-friendly-name-of-device.local \
   -e CACHE_DURATION=12 \
@@ -99,7 +98,6 @@ docker run -d \
 docker run -d \
   --name jellyfin-discovery-proxy \
   --network=host \
-  -p 8080:8080 \
   -e JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096 \
   -e LOG_LEVEL=debug \
   -e BLACKLIST=192.168.0.100,192.168.1.0/24 \
@@ -109,7 +107,6 @@ docker run -d \
 docker run -d \
   --name jellyfin-discovery-proxy \
   --network=host \
-  -p 8080:8080 \
   -e JELLYFIN_SERVER_URL_IPV4=http://192.168.1.100:8096 \
   -e JELLYFIN_SERVER_URL_IPV6=http://[2001:db8::1]:8096 \
   -e LOG_LEVEL=info \
@@ -129,8 +126,6 @@ services:
     container_name: jellyfin-discovery-proxy
     network_mode: host # Required: Bridged/VLAN networks typically do not receive discovery broadcasts
     restart: unless-stopped
-    ports:
-      - "8080:8080" # Web dashboard and health check
     environment:
       # Legacy mode - use same URL for both IPv4 and IPv6
       - JELLYFIN_SERVER_URL=http://your-jellyfin-server.com:8096
