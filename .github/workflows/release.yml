@@ -24,11 +24,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-
       - name: Read project configuration
         id: project_config
         run: |
@@ -37,6 +32,12 @@ jobs:
           echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "owner=$OWNER" >> $GITHUB_OUTPUT
+          echo "go_version=$GO_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.project_config.outputs.go_version }}
 
       - name: Set up environment variables
         run: |
@@ -58,6 +59,9 @@ jobs:
       - name: Build project
         if: steps.check_tag.outputs.skip_release == 'false'
         run: |
+          VERSION="${{ steps.project_config.outputs.version }}"
+          LDFLAGS="-s -w -X 'jellyfin-discovery-proxy/pkg/types.Version=${VERSION}'"
+
           if [ -f ./build.sh ]; then
             chmod +x ./build.sh
             ./build.sh
@@ -67,11 +71,11 @@ jobs:
               make
             else
               mkdir -p build
-              GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o build/jellyfin-discovery-proxy-linux-amd64
-              GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o build/jellyfin-discovery-proxy-linux-arm64
-              GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o build/jellyfin-discovery-proxy-windows-amd64.exe
-              GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o build/jellyfin-discovery-proxy-darwin-amd64
-              GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o build/jellyfin-discovery-proxy-darwin-arm64
+              GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o build/jellyfin-discovery-proxy-linux-amd64
+              GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o build/jellyfin-discovery-proxy-linux-arm64
+              GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o build/jellyfin-discovery-proxy-windows-amd64.exe
+              GOOS=darwin GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o build/jellyfin-discovery-proxy-darwin-amd64
+              GOOS=darwin GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o build/jellyfin-discovery-proxy-darwin-arm64
             fi
           fi
 

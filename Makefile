@@ -5,7 +5,8 @@
 -include project.conf
 
 # Go build flags
-LDFLAGS := -s -w
+VERSION_PKG := jellyfin-discovery-proxy/pkg/types
+LDFLAGS := -s -w -X '$(VERSION_PKG).Version=$(VERSION)'
 TRIMPATH := -trimpath
 
 # Default goal

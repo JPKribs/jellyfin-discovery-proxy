@@ -6,12 +6,16 @@ WORKDIR /app
 COPY go.mod ./
 RUN go mod download
 
-# Copy source code (entire project structure)
+# Copy source code and project config
 COPY cmd/ ./cmd/
 COPY pkg/ ./pkg/
+COPY project.conf ./
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o jellyfin-discovery-proxy ./cmd/jellyfin-discovery-proxy
+# Build the application with version from project.conf
+RUN source project.conf && \
+    CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -X 'jellyfin-discovery-proxy/pkg/types.Version=${VERSION}'" \
+    -o jellyfin-discovery-proxy ./cmd/jellyfin-discovery-proxy
 
 # Final stage
 FROM alpine:latest

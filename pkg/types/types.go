@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// Version information
-const Version = "1.5.0"
+// Version is set at build time via -ldflags
+var Version = "DEBUG"
 
 // Log represents the severity of a log message
 type Log int
