@@ -31,6 +31,7 @@ jobs:
           echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "owner=$OWNER" >> $GITHUB_OUTPUT
+          echo "go_version=$GO_VERSION" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -79,6 +80,8 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: ${{ steps.docker_tags.outputs.tags }}
+          build-args: |
+            GO_VERSION=${{ steps.project_config.outputs.go_version }}
           cache-from: type=registry,ref=${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:buildcache
           cache-to: type=registry,ref=${{ steps.project_config.outputs.owner }}/${{ steps.project_config.outputs.app_name }}:buildcache,mode=max
 

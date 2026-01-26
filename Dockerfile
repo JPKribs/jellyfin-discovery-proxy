@@ -1,5 +1,6 @@
-# Build stage
-FROM golang:1.24-alpine AS builder
+# Build stage - GO_VERSION arg allows override, defaults to 1.21
+ARG GO_VERSION=1.21
+FROM golang:${GO_VERSION}-alpine AS builder
 
 # Copy Go module files to working directory and download dependencies
 WORKDIR /app
