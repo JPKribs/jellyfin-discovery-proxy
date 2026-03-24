@@ -27,12 +27,43 @@ jobs:
       - name: Read project configuration
         id: project_config
         run: |
-          # Source the project.conf file to get variables
           source project.conf
           echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "owner=$OWNER" >> $GITHUB_OUTPUT
           echo "go_version=$GO_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Determine version from git
+        id: version
+        run: |
+          # Use the latest git tag as the version source of truth
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          # Get version for this commit (includes commit info if not on a tag)
+          GIT_VERSION=$(git describe --tags --always 2>/dev/null || echo "0.0.0")
+
+          if [ -n "$LATEST_TAG" ]; then
+            echo "Latest tag: $LATEST_TAG"
+            echo "Git version: $GIT_VERSION"
+          fi
+
+          # If HEAD is exactly on a tag, use that tag as the version
+          HEAD_TAG=$(git tag --points-at HEAD 2>/dev/null | head -1)
+          if [ -n "$HEAD_TAG" ]; then
+            VERSION="$HEAD_TAG"
+            echo "HEAD is tagged as $VERSION, skipping release (already released)"
+            echo "skip_release=true" >> $GITHUB_OUTPUT
+          else
+            # Bump: read base version from project.conf, check if it's already tagged
+            source project.conf
+            if git rev-parse "$VERSION" >/dev/null 2>&1; then
+              echo "⚠️ Tag $VERSION already exists but HEAD is not on it — bump VERSION in project.conf"
+              echo "skip_release=true" >> $GITHUB_OUTPUT
+            else
+              echo "✅ New version $VERSION will be released"
+              echo "skip_release=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -41,26 +72,14 @@ jobs:
 
       - name: Set up environment variables
         run: |
-          echo "VERSION=${{ steps.project_config.outputs.version }}" >> $GITHUB_ENV
+          echo "VERSION=${{ steps.version.outputs.version }}" >> $GITHUB_ENV
           echo "BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
-
-      - name: Check if version tag exists
-        id: check_tag
-        run: |
-          VERSION="${{ steps.project_config.outputs.version }}"
-          if git rev-parse "$VERSION" >/dev/null 2>&1; then
-            echo "⚠️ Tag $VERSION already exists, skipping release"
-            echo "skip_release=true" >> $GITHUB_OUTPUT
-          else
-            echo "✅ Tag $VERSION does not exist, proceeding with release"
-            echo "skip_release=false" >> $GITHUB_OUTPUT
-          fi
       
       - name: Build project
-        if: steps.check_tag.outputs.skip_release == 'false'
+        if: steps.version.outputs.skip_release == 'false'
         run: |
-          VERSION="${{ steps.project_config.outputs.version }}"
-          LDFLAGS="-s -w -X 'jellyfin-discovery-proxy/pkg/types.Version=${VERSION}'"
+          VERSION="${{ steps.version.outputs.version }}"
+          LDFLAGS="-s -w -X 'github.com/jpkribs/jellyfin-discovery-proxy/pkg/types.Version=${VERSION}'"
 
           if [ -f ./build.sh ]; then
             chmod +x ./build.sh
@@ -68,7 +87,7 @@ jobs:
           else
             echo "No build.sh found, using Makefile or Go build"
             if [ -f Makefile ]; then
-              make
+              make VERSION="${VERSION}"
             else
               mkdir -p build
               GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o build/jellyfin-discovery-proxy-linux-amd64
@@ -80,9 +99,9 @@ jobs:
           fi
 
       - name: Generate changelog
-        if: steps.check_tag.outputs.skip_release == 'false'
+        if: steps.version.outputs.skip_release == 'false'
         run: |
-          VERSION="${{ steps.project_config.outputs.version }}"
+          VERSION="${{ steps.version.outputs.version }}"
 
           # Get the last tag
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -104,7 +123,7 @@ jobs:
           echo "Download the appropriate binary for your platform from the assets below." >> changelog.txt
 
       - name: Create Release
-        if: steps.check_tag.outputs.skip_release == 'false'
+        if: steps.version.outputs.skip_release == 'false'
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
@@ -145,7 +164,7 @@ jobs:
 
       - name: Release summary
         run: |
-          if [ "${{ steps.check_tag.outputs.skip_release }}" == "false" ]; then
+          if [ "${{ steps.version.outputs.skip_release }}" == "false" ]; then
             echo "✅ Release ${{ env.VERSION }} created successfully!"
             echo "📦 Binaries built for multiple platforms"
             echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ env.VERSION }}"

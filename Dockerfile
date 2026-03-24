@@ -15,7 +15,7 @@ COPY project.conf ./
 # Build the application with version from project.conf
 RUN source project.conf && \
     CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w -X 'jellyfin-discovery-proxy/pkg/types.Version=${VERSION}'" \
+    -ldflags="-s -w -X 'github.com/jpkribs/jellyfin-discovery-proxy/pkg/types.Version=${VERSION}'" \
     -o jellyfin-discovery-proxy ./cmd/jellyfin-discovery-proxy
 
 # Final stage

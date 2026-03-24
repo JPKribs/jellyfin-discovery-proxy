@@ -1,11 +1,11 @@
 # Jellyfin Discovery Proxy Makefile
 # Provides cross-platform build capabilities for the Jellyfin Discovery Proxy
 
-# Include project configuration
+# Include project configuration (provides defaults for VERSION, APP_NAME, etc.)
 -include project.conf
 
-# Go build flags
-VERSION_PKG := jellyfin-discovery-proxy/pkg/types
+# Allow VERSION override from command line: make VERSION=1.5.3
+VERSION_PKG := github.com/jpkribs/jellyfin-discovery-proxy/pkg/types
 LDFLAGS := -s -w -X '$(VERSION_PKG).Version=$(VERSION)'
 TRIMPATH := -trimpath
 
