@@ -29,7 +29,13 @@ func main() {
 
 	// Parse command-line flags
 	logLevelFlag := flag.String("log-level", "info", "Log level (debug, info, warn, error)")
+	versionFlag := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(types.Version)
+		os.Exit(0)
+	}
 
 	// Initialize log buffer
 	logging.LogBuffer = logging.NewLogBuffer(logging.GetLogBufferSize())

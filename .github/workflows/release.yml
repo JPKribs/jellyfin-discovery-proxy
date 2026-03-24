@@ -48,11 +48,11 @@ jobs:
         id: check_tag
         run: |
           VERSION="${{ steps.project_config.outputs.version }}"
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "⚠️ Tag v$VERSION already exists, skipping release"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "⚠️ Tag $VERSION already exists, skipping release"
             echo "skip_release=true" >> $GITHUB_OUTPUT
           else
-            echo "✅ Tag v$VERSION does not exist, proceeding with release"
+            echo "✅ Tag $VERSION does not exist, proceeding with release"
             echo "skip_release=false" >> $GITHUB_OUTPUT
           fi
       
@@ -146,11 +146,11 @@ jobs:
       - name: Release summary
         run: |
           if [ "${{ steps.check_tag.outputs.skip_release }}" == "false" ]; then
-            echo "✅ Release v${{ env.VERSION }} created successfully!"
+            echo "✅ Release ${{ env.VERSION }} created successfully!"
             echo "📦 Binaries built for multiple platforms"
             echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ env.VERSION }}"
           else
-            echo "⚠️ Release v${{ env.VERSION }} already exists, skipped release creation"
+            echo "⚠️ Release ${{ env.VERSION }} already exists, skipped release creation"
           fi
           echo ""
           echo "🐳 Docker image pushed:"
