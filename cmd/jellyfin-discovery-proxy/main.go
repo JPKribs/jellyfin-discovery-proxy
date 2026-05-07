@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -89,7 +88,6 @@ func main() {
 		logging.Logf(types.LogError, "Failed to create UDP listeners: %v", err)
 		os.Exit(1)
 	}
-	defer closeConnections(conns)
 
 	if cacheDuration == 0 {
 		logging.Logln(types.LogInfo, "Server info will be cached until restart")
@@ -118,7 +116,7 @@ func main() {
 
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Start listeners
 	startListeners(ctx, conns, cfg, cacheV4, cacheV6, ipBlacklist, requestStats, hookConfig)
@@ -136,29 +134,48 @@ func main() {
 	os.Exit(0)
 }
 
+// listenUDP6Only binds an IPv6 UDP socket with IPV6_V6ONLY set, so a
+// separate IPv4 socket can bind the same port and receive IPv4 broadcasts
+// (255.255.255.255), which a dual-stack IPv6 socket does not receive.
+func listenUDP6Only(address string) (*net.UDPConn, error) {
+	lc := net.ListenConfig{
+		Control: func(network, addr string, c syscall.RawConn) error {
+			var sockErr error
+			if err := c.Control(func(fd uintptr) {
+				sockErr = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY, 1)
+			}); err != nil {
+				return err
+			}
+			return sockErr
+		},
+	}
+	pc, err := lc.ListenPacket(context.Background(), "udp6", address)
+	if err != nil {
+		return nil, err
+	}
+	return pc.(*net.UDPConn), nil
+}
+
 // createUDPListeners creates IPv4 and IPv6 UDP listeners
 func createUDPListeners(bindIP string) ([]*net.UDPConn, error) {
 	var conns []*net.UDPConn
 
 	// Try IPv6 first if binding to all interfaces
 	if bindIP == "0.0.0.0" {
-		logging.Logf(types.LogDebug, "Attempting to bind UDP6 listener on [::]:7359")
-		addr6, err := net.ResolveUDPAddr("udp6", "[::]:7359")
-		if err != nil {
-			logging.Logf(types.LogWarn, "Error resolving UDP6 address: %v", err)
-			logging.Logf(types.LogDebug, "UDP6 resolution failed with error type: %T", err)
-		} else if conn6, err := net.ListenUDP("udp6", addr6); err != nil {
-			logging.Logf(types.LogWarn, "UDP6 not available on port 7359: %v", err)
+		udp6Addr := fmt.Sprintf("[::]:%d", types.DiscoveryPort)
+		logging.Logf(types.LogDebug, "Attempting to bind UDP6 listener on %s (IPV6_V6ONLY)", udp6Addr)
+		if conn6, err := listenUDP6Only(udp6Addr); err != nil {
+			logging.Logf(types.LogWarn, "UDP6 not available on port %d: %v", types.DiscoveryPort, err)
 			logging.Logf(types.LogDebug, "UDP6 bind failed with error type: %T", err)
 		} else {
 			conns = append(conns, conn6)
-			logging.Logln(types.LogInfo, "Successfully bound to UDP6 [::]:7359 for discovery requests")
+			logging.Logf(types.LogInfo, "Successfully bound to UDP6 %s for discovery requests", udp6Addr)
 			logging.Logf(types.LogDebug, "UDP6 connection local address: %s", conn6.LocalAddr())
 		}
 	}
 
 	// Always try IPv4
-	udp4Addr := fmt.Sprintf("%s:7359", bindIP)
+	udp4Addr := fmt.Sprintf("%s:%d", bindIP, types.DiscoveryPort)
 	logging.Logf(types.LogDebug, "Attempting to bind UDP4 listener on %s", udp4Addr)
 	addr4, err := net.ResolveUDPAddr("udp4", udp4Addr)
 	if err != nil {
@@ -169,7 +186,7 @@ func createUDPListeners(bindIP string) ([]*net.UDPConn, error) {
 
 	if conn4, err := net.ListenUDP("udp4", addr4); err != nil {
 		if len(conns) == 0 {
-			logging.Logf(types.LogError, "Error listening on UDP4 port 7359: %v", err)
+			logging.Logf(types.LogError, "Error listening on UDP4 port %d: %v", types.DiscoveryPort, err)
 			logging.Logf(types.LogDebug, "UDP4 bind failed with error type: %T", err)
 			return nil, fmt.Errorf("failed to bind UDP4: %v", err)
 		}
@@ -182,7 +199,7 @@ func createUDPListeners(bindIP string) ([]*net.UDPConn, error) {
 	}
 
 	if len(conns) == 0 {
-		return nil, fmt.Errorf("no UDP listeners could be created on port 7359")
+		return nil, fmt.Errorf("no UDP listeners could be created on port %d", types.DiscoveryPort)
 	}
 
 	logging.Logf(types.LogDebug, "Total active UDP listeners: %d", len(conns))
@@ -254,7 +271,8 @@ func startListeners(ctx context.Context, conns []*net.UDPConn, cfg *types.Config
 	for i, c := range conns {
 		logging.Logf(types.LogDebug, "Starting listener goroutine %d for %s", i, c.LocalAddr())
 		// Determine if this is IPv4 or IPv6 listener
-		isIPv6 := strings.Contains(c.LocalAddr().String(), "[")
+		localAddr, _ := c.LocalAddr().(*net.UDPAddr)
+		isIPv6 := localAddr != nil && localAddr.IP.To4() == nil
 		if isIPv6 {
 			logging.Logf(types.LogDebug, "Listener %d is IPv6, using IPv6 URLs and cache", i)
 			go discovery.ListenLoop(ctx, c, cfg.ServerURLv6, cfg.ProxyURLv6, cacheV6, ipBlacklist, requestStats, hookConfig)

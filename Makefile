@@ -4,7 +4,7 @@
 # Include project configuration (provides defaults for VERSION, APP_NAME, etc.)
 -include project.conf
 
-# Allow VERSION override from command line: make VERSION=1.5.3
+# Allow VERSION override from command line: make VERSION=1.5.5
 VERSION_PKG := github.com/jpkribs/jellyfin-discovery-proxy/pkg/types
 LDFLAGS := -s -w -X '$(VERSION_PKG).Version=$(VERSION)'
 TRIMPATH := -trimpath

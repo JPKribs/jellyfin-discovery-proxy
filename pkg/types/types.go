@@ -9,6 +9,10 @@ import (
 // Version is set at build time via -ldflags
 var Version = "DEBUG"
 
+// DiscoveryPort is the UDP port Jellyfin clients use for the
+// "Who is JellyfinServer?" client-discovery broadcast.
+const DiscoveryPort = 7359
+
 // Log represents the severity of a log message
 type Log int
 
