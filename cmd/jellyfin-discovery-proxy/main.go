@@ -17,6 +17,7 @@ import (
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/discovery"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/hooks"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/logging"
+	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/netutil"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/server"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/stats"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/types"
@@ -134,28 +135,6 @@ func main() {
 	os.Exit(0)
 }
 
-// listenUDP6Only binds an IPv6 UDP socket with IPV6_V6ONLY set, so a
-// separate IPv4 socket can bind the same port and receive IPv4 broadcasts
-// (255.255.255.255), which a dual-stack IPv6 socket does not receive.
-func listenUDP6Only(address string) (*net.UDPConn, error) {
-	lc := net.ListenConfig{
-		Control: func(network, addr string, c syscall.RawConn) error {
-			var sockErr error
-			if err := c.Control(func(fd uintptr) {
-				sockErr = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY, 1)
-			}); err != nil {
-				return err
-			}
-			return sockErr
-		},
-	}
-	pc, err := lc.ListenPacket(context.Background(), "udp6", address)
-	if err != nil {
-		return nil, err
-	}
-	return pc.(*net.UDPConn), nil
-}
-
 // createUDPListeners creates IPv4 and IPv6 UDP listeners
 func createUDPListeners(bindIP string) ([]*net.UDPConn, error) {
 	var conns []*net.UDPConn
@@ -164,7 +143,7 @@ func createUDPListeners(bindIP string) ([]*net.UDPConn, error) {
 	if bindIP == "0.0.0.0" {
 		udp6Addr := fmt.Sprintf("[::]:%d", types.DiscoveryPort)
 		logging.Logf(types.LogDebug, "Attempting to bind UDP6 listener on %s (IPV6_V6ONLY)", udp6Addr)
-		if conn6, err := listenUDP6Only(udp6Addr); err != nil {
+		if conn6, err := netutil.ListenUDP6Only(udp6Addr); err != nil {
 			logging.Logf(types.LogWarn, "UDP6 not available on port %d: %v", types.DiscoveryPort, err)
 			logging.Logf(types.LogDebug, "UDP6 bind failed with error type: %T", err)
 		} else {
