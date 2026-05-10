@@ -67,23 +67,19 @@ type ServerInfoCache struct {
 
 // DashboardData holds data for the dashboard template
 type DashboardData struct {
-	Version            string
-	ServerURLv4        string
-	ServerURLv6        string
-	ProxyURLv4         string
-	ProxyURLv6         string
-	LastRequestTime    string
-	LastRequestIP      string
-	TotalRequests      int64
-	CachedServerIDv4   string
-	CachedServerNamev4 string
-	CacheAgev4         string
-	CachedServerIDv6   string
-	CachedServerNamev6 string
-	CacheAgev6         string
-	BlacklistedIPs     int
-	Logs               []string
-	Uptime             string
+	Version          string
+	ServerURL        string
+	ProxyURL         string
+	ProxyURLv6       string
+	LastRequestTime  string
+	LastRequestIP    string
+	TotalRequests    int64
+	CachedServerID   string
+	CachedServerName string
+	CacheAge         string
+	BlacklistedIPs   int
+	Logs             []string
+	Uptime           string
 }
 
 // LogBuffer holds recent log messages in memory
@@ -108,11 +104,16 @@ type IPBlacklist struct {
 	Mutex   sync.RWMutex
 }
 
-// Config holds all configuration for the proxy
+// Config holds all configuration for the proxy.
+//
+// ServerURL is the single URL the proxy uses to fetch /System/Info/Public
+// from Jellyfin. ProxyURL is the primary URL advertised to discovery
+// clients. ProxyURLv6, when non-empty and different from ProxyURL, causes
+// a second response carrying the v6 URL to be sent so dual-stack clients
+// can pick whichever endpoint they can reach.
 type Config struct {
-	ServerURLv4      string
-	ServerURLv6      string
-	ProxyURLv4       string
+	ServerURL        string
+	ProxyURL         string
 	ProxyURLv6       string
 	NetworkInterface string
 	BindIP           string

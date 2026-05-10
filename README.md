@@ -23,12 +23,11 @@ Access the dashboard at `http://localhost:8080`
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `JELLYFIN_SERVER_URL` | Jellyfin server URL (legacy mode for both IPv4/IPv6) | `http://localhost:8096` |
-| `JELLYFIN_SERVER_URL_IPV4` | IPv4-specific server URL | Uses `JELLYFIN_SERVER_URL` |
-| `JELLYFIN_SERVER_URL_IPV6` | IPv6-specific server URL | Uses `JELLYFIN_SERVER_URL` |
-| `PROXY_URL` | URL advertised to clients (legacy mode) | Uses `JELLYFIN_SERVER_URL` |
-| `PROXY_URL_IPV4` | IPv4-specific proxy URL | Uses `JELLYFIN_SERVER_URL_IPV4` |
-| `PROXY_URL_IPV6` | IPv6-specific proxy URL | Uses `JELLYFIN_SERVER_URL_IPV6` |
+| `JELLYFIN_SERVER_URL` | URL the proxy uses to fetch `/System/Info/Public` from Jellyfin | `http://localhost:8096` |
+| `PROXY_URL` | URL advertised to discovery clients | Uses `JELLYFIN_SERVER_URL` |
+| `PROXY_URL_IPV6` | Optional second URL advertised in a follow-up response, for dual-stack clients that prefer IPv6 | _unset_ |
+
+> Discovery itself is IPv4-only (Jellyfin clients broadcast on `255.255.255.255:7359`, which has no IPv6 equivalent). When `PROXY_URL_IPV6` is set and differs from `PROXY_URL`, the proxy emits two responses per request — primary first, then the v6 URL — so dual-stack clients can pick whichever endpoint they can reach.
 
 ### Webhook Configuration
 

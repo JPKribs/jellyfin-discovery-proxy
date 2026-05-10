@@ -13,8 +13,13 @@ import (
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/types"
 )
 
-// ListenLoop listens for discovery requests on a single UDP socket.
-func ListenLoop(ctx context.Context, conn *net.UDPConn, serverURL, proxyURL string, cache *types.ServerInfoCache, blacklist *types.IPBlacklist, stats *types.RequestStats, hookConfig *hooks.HookConfig) {
+// ListenLoop listens for IPv4 discovery requests on a single UDP socket and
+// emits responses for proxyURL plus, when configured, proxyURLv6 so
+// dual-stack clients can pick whichever endpoint they prefer.
+func ListenLoop(ctx context.Context, conn *net.UDPConn,
+	serverURL, proxyURL, proxyURLv6 string,
+	cache *types.ServerInfoCache,
+	blacklist *types.IPBlacklist, stats *types.RequestStats, hookConfig *hooks.HookConfig) {
 	buffer := make([]byte, 1024)
 	logging.Logf(types.LogDebug, "Listener started for %s with buffer size: %d bytes", conn.LocalAddr(), len(buffer))
 
@@ -50,7 +55,7 @@ func ListenLoop(ctx context.Context, conn *net.UDPConn, serverURL, proxyURL stri
 
 		if strings.EqualFold(message, "Who is JellyfinServer?") {
 			logging.Logf(types.LogDebug, "Valid Jellyfin discovery request detected, spawning handler goroutine")
-			go HandleRequest(conn, addr, serverURL, proxyURL, cache, blacklist, stats, hookConfig)
+			go HandleRequest(conn, addr, serverURL, proxyURL, proxyURLv6, cache, blacklist, stats, hookConfig)
 		} else {
 			logging.Logf(types.LogWarn, "Ignoring unrecognized message from %s: %s", addr.String(), message)
 			logging.Logf(types.LogDebug, "Expected 'Who is JellyfinServer?' but got '%s'", message)
@@ -58,8 +63,13 @@ func ListenLoop(ctx context.Context, conn *net.UDPConn, serverURL, proxyURL stri
 	}
 }
 
-// HandleRequest processes discovery requests and sends responses.
-func HandleRequest(conn *net.UDPConn, addr *net.UDPAddr, serverURL string, proxyURL string, cache *types.ServerInfoCache, blacklist *types.IPBlacklist, stats *types.RequestStats, hookConfig *hooks.HookConfig) {
+// HandleRequest processes a discovery request, fetching server info if the
+// cache is cold, then emitting the primary response and (when configured) a
+// second response carrying proxyURLv6.
+func HandleRequest(conn *net.UDPConn, addr *net.UDPAddr,
+	serverURL, proxyURL, proxyURLv6 string,
+	cache *types.ServerInfoCache,
+	blacklist *types.IPBlacklist, stats *types.RequestStats, hookConfig *hooks.HookConfig) {
 	logging.Logf(types.LogInfo, "Processing discovery request from %s", addr.String())
 	logging.Logf(types.LogDebug, "Handler goroutine started for request from %s", addr.String())
 
@@ -79,7 +89,7 @@ func HandleRequest(conn *net.UDPConn, addr *net.UDPAddr, serverURL string, proxy
 
 	stats.RecordRequest(clientIP)
 
-	logging.Logf(types.LogDebug, "Checking cache for server info")
+	logging.Logln(types.LogDebug, "Checking cache for server info")
 	serverInfo := cache.Get()
 
 	if serverInfo == nil {
@@ -100,41 +110,50 @@ func HandleRequest(conn *net.UDPConn, addr *net.UDPAddr, serverURL string, proxy
 		logging.Logf(types.LogDebug, "Cache updated at: %v", cache.Timestamp)
 	} else {
 		logging.Logln(types.LogInfo, "Using cached server info for response")
-		cacheAge := time.Since(cache.Timestamp)
-		logging.Logf(types.LogDebug, "Cache hit - age: %v, cached at: %v", cacheAge, cache.Timestamp)
+		logging.Logf(types.LogDebug, "Cache hit - age: %v, cached at: %v", time.Since(cache.Timestamp), cache.Timestamp)
 	}
 
-	addressURL := ""
-	if proxyURL != "" {
-		addressURL = proxyURL
-		logging.Logf(types.LogDebug, "Using PROXY_URL for address: %s", addressURL)
-	} else {
-		addressURL = serverURL
-		logging.Logf(types.LogDebug, "Using JELLYFIN_SERVER_URL for address: %s", addressURL)
-	}
+	sendForURL(conn, addr, proxyURL, serverInfo, hookConfig, "primary")
 
-	if proxyURL != "" && server.IsHostname(proxyURL) {
-		logging.Logln(types.LogInfo, "Sending dual responses (hostname + IP) for non-Avahi device compatibility")
-		logging.Logf(types.LogDebug, "Dual response mode enabled for hostname: %s", proxyURL)
-
-		SendResponse(conn, addr, addressURL, serverInfo, hookConfig)
-
-		logging.Logf(types.LogDebug, "Attempting to resolve hostname %s to IP", proxyURL)
-		ipURL, err := server.ResolveHostnameToIP(proxyURL)
-		if err != nil {
-			logging.Logf(types.LogWarn, "Could not resolve hostname %s to IP: %v", proxyURL, err)
-			logging.Logf(types.LogDebug, "DNS resolution error type: %T", err)
-		} else {
-			logging.Logf(types.LogInfo, "Resolved %s to %s, sending second response", proxyURL, ipURL)
-			logging.Logf(types.LogDebug, "Hostname resolved successfully to: %s", ipURL)
-			SendResponse(conn, addr, ipURL, serverInfo, hookConfig)
-		}
-	} else {
-		logging.Logf(types.LogDebug, "Single response mode - sending one discovery response")
-		SendResponse(conn, addr, addressURL, serverInfo, hookConfig)
+	// Only emit a second response when an IPv6-specific URL was configured;
+	// otherwise it would just duplicate the primary payload.
+	if proxyURLv6 != "" && proxyURLv6 != proxyURL {
+		sendForURL(conn, addr, proxyURLv6, serverInfo, hookConfig, "IPv6")
 	}
 
 	logging.Logf(types.LogDebug, "Handler goroutine completed for %s", addr.String())
+}
+
+// sendForURL dispatches the discovery response for a single advertised URL,
+// expanding hostnames to "hostname + resolved IP" pairs for non-Avahi device
+// compatibility (matches the behavior the proxy has had since hostnames were
+// first supported).
+func sendForURL(conn *net.UDPConn, addr *net.UDPAddr, advertisedURL string, serverInfo *types.SystemInfoResponse, hookConfig *hooks.HookConfig, label string) {
+	if advertisedURL == "" {
+		return
+	}
+
+	if server.IsHostname(advertisedURL) {
+		logging.Logf(types.LogInfo, "Sending dual %s responses (hostname + IP) for non-Avahi device compatibility", label)
+		logging.Logf(types.LogDebug, "%s dual response mode enabled for hostname: %s", label, advertisedURL)
+
+		SendResponse(conn, addr, advertisedURL, serverInfo, hookConfig)
+
+		logging.Logf(types.LogDebug, "Attempting to resolve %s hostname %s to IP", label, advertisedURL)
+		ipURL, err := server.ResolveHostnameToIP(advertisedURL)
+		if err != nil {
+			logging.Logf(types.LogWarn, "Could not resolve %s hostname %s to IP: %v", label, advertisedURL, err)
+			logging.Logf(types.LogDebug, "%s DNS resolution error type: %T", label, err)
+			return
+		}
+		logging.Logf(types.LogInfo, "Resolved %s %s to %s, sending second response", label, advertisedURL, ipURL)
+		logging.Logf(types.LogDebug, "%s hostname resolved successfully to: %s", label, ipURL)
+		SendResponse(conn, addr, ipURL, serverInfo, hookConfig)
+		return
+	}
+
+	logging.Logf(types.LogDebug, "%s single response mode - sending one discovery response", label)
+	SendResponse(conn, addr, advertisedURL, serverInfo, hookConfig)
 }
 
 // SendResponse sends a single discovery response to the client.

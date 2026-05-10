@@ -17,7 +17,6 @@ import (
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/discovery"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/hooks"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/logging"
-	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/netutil"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/server"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/stats"
 	"github.com/jpkribs/jellyfin-discovery-proxy/pkg/types"
@@ -83,10 +82,10 @@ func main() {
 	// Determine cache duration
 	cacheDuration := cache.GetDuration()
 
-	// Create UDP listeners
-	conns, err := createUDPListeners(cfg.BindIP)
+	// Create the UDP listener (IPv4 only — Jellyfin discovery is an IPv4 broadcast).
+	conn, err := createUDPListener(cfg.BindIP)
 	if err != nil {
-		logging.Logf(types.LogError, "Failed to create UDP listeners: %v", err)
+		logging.Logf(types.LogError, "Failed to create UDP listener: %v", err)
 		os.Exit(1)
 	}
 
@@ -97,19 +96,17 @@ func main() {
 	}
 	logging.Logf(types.LogDebug, "Cache duration in nanoseconds: %d", cacheDuration.Nanoseconds())
 
-	// Initialize caches
-	cacheV4 := cache.New(cacheDuration)
-	cacheV6 := cache.New(cacheDuration)
-	logging.Logf(types.LogDebug, "Initialized server info caches with duration: %v", cacheDuration)
+	// Initialize cache
+	serverCache := cache.New(cacheDuration)
+	logging.Logf(types.LogDebug, "Initialized server info cache with duration: %v", cacheDuration)
 
 	// Fetch initial server info
-	fetchInitialServerInfo(cfg.ServerURLv4, cfg.ServerURLv6, cacheV4, cacheV6)
+	fetchInitialServerInfo(cfg.ServerURL, serverCache)
 
 	// Start HTTP server
-	httpServer := startHTTPServer(cacheV4, cacheV6, cfg, requestStats, ipBlacklist)
+	httpServer := startHTTPServer(serverCache, cfg, requestStats, ipBlacklist)
 
 	logging.Logln(types.LogInfo, "=== Jellyfin Discovery Proxy Ready ===")
-	logging.Logf(types.LogDebug, "Starting %d listener goroutines", len(conns))
 
 	// Set up graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -119,8 +116,8 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Start listeners
-	startListeners(ctx, conns, cfg, cacheV4, cacheV6, ipBlacklist, requestStats, hookConfig)
+	// Start the listener
+	startListener(ctx, conn, cfg, serverCache, ipBlacklist, requestStats, hookConfig)
 
 	logging.Logln(types.LogDebug, "Main thread waiting for shutdown signal")
 
@@ -129,31 +126,17 @@ func main() {
 	logging.Logf(types.LogInfo, "Received signal %v, initiating graceful shutdown", sig)
 
 	// Perform graceful shutdown
-	gracefulShutdown(cancel, httpServer, conns)
+	gracefulShutdown(cancel, httpServer, conn)
 
 	logging.Logln(types.LogInfo, "=== Jellyfin Discovery Proxy Stopped ===")
 	os.Exit(0)
 }
 
-// createUDPListeners creates IPv4 and IPv6 UDP listeners
-func createUDPListeners(bindIP string) ([]*net.UDPConn, error) {
-	var conns []*net.UDPConn
-
-	// Try IPv6 first if binding to all interfaces
-	if bindIP == "0.0.0.0" {
-		udp6Addr := fmt.Sprintf("[::]:%d", types.DiscoveryPort)
-		logging.Logf(types.LogDebug, "Attempting to bind UDP6 listener on %s (IPV6_V6ONLY)", udp6Addr)
-		if conn6, err := netutil.ListenUDP6Only(udp6Addr); err != nil {
-			logging.Logf(types.LogWarn, "UDP6 not available on port %d: %v", types.DiscoveryPort, err)
-			logging.Logf(types.LogDebug, "UDP6 bind failed with error type: %T", err)
-		} else {
-			conns = append(conns, conn6)
-			logging.Logf(types.LogInfo, "Successfully bound to UDP6 %s for discovery requests", udp6Addr)
-			logging.Logf(types.LogDebug, "UDP6 connection local address: %s", conn6.LocalAddr())
-		}
-	}
-
-	// Always try IPv4
+// createUDPListener creates the IPv4 UDP listener for Jellyfin discovery.
+// Jellyfin clients broadcast on 255.255.255.255:7359, which is IPv4-only —
+// IPv6 has no broadcast equivalent, so a v6 socket would never receive a
+// real discovery request.
+func createUDPListener(bindIP string) (*net.UDPConn, error) {
 	udp4Addr := fmt.Sprintf("%s:%d", bindIP, types.DiscoveryPort)
 	logging.Logf(types.LogDebug, "Attempting to bind UDP4 listener on %s", udp4Addr)
 	addr4, err := net.ResolveUDPAddr("udp4", udp4Addr)
@@ -163,73 +146,42 @@ func createUDPListeners(bindIP string) ([]*net.UDPConn, error) {
 		return nil, fmt.Errorf("failed to resolve UDP4 address: %v", err)
 	}
 
-	if conn4, err := net.ListenUDP("udp4", addr4); err != nil {
-		if len(conns) == 0 {
-			logging.Logf(types.LogError, "Error listening on UDP4 port %d: %v", types.DiscoveryPort, err)
-			logging.Logf(types.LogDebug, "UDP4 bind failed with error type: %T", err)
-			return nil, fmt.Errorf("failed to bind UDP4: %v", err)
-		}
-		logging.Logf(types.LogWarn, "Could not bind UDP4 (possibly already covered by UDP6): %v", err)
+	conn4, err := net.ListenUDP("udp4", addr4)
+	if err != nil {
+		logging.Logf(types.LogError, "Error listening on UDP4 port %d: %v", types.DiscoveryPort, err)
 		logging.Logf(types.LogDebug, "UDP4 bind failed with error type: %T", err)
-	} else {
-		conns = append(conns, conn4)
-		logging.Logf(types.LogInfo, "Successfully bound to UDP4 %s for discovery requests", udp4Addr)
-		logging.Logf(types.LogDebug, "UDP4 connection local address: %s", conn4.LocalAddr())
+		return nil, fmt.Errorf("failed to bind UDP4: %v", err)
 	}
 
-	if len(conns) == 0 {
-		return nil, fmt.Errorf("no UDP listeners could be created on port %d", types.DiscoveryPort)
-	}
-
-	logging.Logf(types.LogDebug, "Total active UDP listeners: %d", len(conns))
-	return conns, nil
+	logging.Logf(types.LogInfo, "Successfully bound to UDP4 %s for discovery requests", udp4Addr)
+	logging.Logf(types.LogDebug, "UDP4 connection local address: %s", conn4.LocalAddr())
+	return conn4, nil
 }
 
-// fetchInitialServerInfo fetches server info at startup
-func fetchInitialServerInfo(serverURLv4, serverURLv6 string, cacheV4, cacheV6 *types.ServerInfoCache) {
-	// Fetch IPv4
-	logging.Logf(types.LogDebug, "Attempting initial IPv4 server info fetch from %s", serverURLv4)
-	serverInfoV4, err := server.FetchInfo(serverURLv4)
+// fetchInitialServerInfo fetches server info at startup so the first
+// discovery request doesn't pay the full HTTP roundtrip.
+func fetchInitialServerInfo(serverURL string, serverCache *types.ServerInfoCache) {
+	logging.Logf(types.LogDebug, "Attempting initial server info fetch from %s", serverURL)
+	serverInfo, err := server.FetchInfo(serverURL)
 	if err != nil {
-		logging.Logf(types.LogWarn, "Could not fetch IPv4 server info at startup: %v", err)
-		logging.Logln(types.LogWarn, "Will try again when IPv4 discovery requests are received")
-		logging.Logf(types.LogDebug, "IPv4 startup fetch failed with error type: %T", err)
-	} else {
-		logging.Logf(types.LogInfo, "Successfully fetched IPv4 server info - ID: %s, Name: %s", serverInfoV4.Id, serverInfoV4.ServerName)
-		cacheV4.Set(serverInfoV4)
-		logging.Logf(types.LogDebug, "IPv4 server info cached at: %v", cacheV4.Timestamp)
+		logging.Logf(types.LogWarn, "Could not fetch server info at startup: %v", err)
+		logging.Logln(types.LogWarn, "Will try again when discovery requests are received")
+		logging.Logf(types.LogDebug, "Startup fetch failed with error type: %T", err)
+		return
 	}
-
-	// Fetch IPv6 if different from IPv4
-	if serverURLv6 != serverURLv4 {
-		logging.Logf(types.LogDebug, "Attempting initial IPv6 server info fetch from %s", serverURLv6)
-		serverInfoV6, err := server.FetchInfo(serverURLv6)
-		if err != nil {
-			logging.Logf(types.LogWarn, "Could not fetch IPv6 server info at startup: %v", err)
-			logging.Logln(types.LogWarn, "Will try again when IPv6 discovery requests are received")
-			logging.Logf(types.LogDebug, "IPv6 startup fetch failed with error type: %T", err)
-		} else {
-			logging.Logf(types.LogInfo, "Successfully fetched IPv6 server info - ID: %s, Name: %s", serverInfoV6.Id, serverInfoV6.ServerName)
-			cacheV6.Set(serverInfoV6)
-			logging.Logf(types.LogDebug, "IPv6 server info cached at: %v", cacheV6.Timestamp)
-		}
-	} else {
-		// Same URL for both, share the cache entry
-		if serverInfoV4 != nil {
-			cacheV6.Set(serverInfoV4)
-			logging.Logf(types.LogDebug, "IPv6 using same cache as IPv4")
-		}
-	}
+	logging.Logf(types.LogInfo, "Successfully fetched server info - ID: %s, Name: %s", serverInfo.Id, serverInfo.ServerName)
+	serverCache.Set(serverInfo)
+	logging.Logf(types.LogDebug, "Server info cached at: %v", serverCache.Timestamp)
 }
 
 // startHTTPServer starts the HTTP server for the dashboard
-func startHTTPServer(cacheV4, cacheV6 *types.ServerInfoCache, cfg *types.Config, requestStats *types.RequestStats, ipBlacklist *types.IPBlacklist) *http.Server {
+func startHTTPServer(serverCache *types.ServerInfoCache, cfg *types.Config, requestStats *types.RequestStats, ipBlacklist *types.IPBlacklist) *http.Server {
 	httpServer := &http.Server{
 		Addr: fmt.Sprintf(":%s", cfg.HTTPPort),
 	}
 
 	http.HandleFunc("/health", web.HealthCheckHandler)
-	http.HandleFunc("/", web.DashboardHandler(cacheV4, cacheV6, cfg.ServerURLv4, cfg.ServerURLv6, cfg.ProxyURLv4, cfg.ProxyURLv6, requestStats, ipBlacklist, logging.LogBuffer, types.Version))
+	http.HandleFunc("/", web.DashboardHandler(serverCache, cfg.ServerURL, cfg.ProxyURL, cfg.ProxyURLv6, requestStats, ipBlacklist, logging.LogBuffer, types.Version))
 	http.HandleFunc("/static/", web.StaticFileHandler)
 	http.HandleFunc("/favicon.ico", web.FaviconHandler)
 
@@ -245,25 +197,19 @@ func startHTTPServer(cacheV4, cacheV6 *types.ServerInfoCache, cfg *types.Config,
 	return httpServer
 }
 
-// startListeners starts all UDP listener goroutines
-func startListeners(ctx context.Context, conns []*net.UDPConn, cfg *types.Config, cacheV4, cacheV6 *types.ServerInfoCache, ipBlacklist *types.IPBlacklist, requestStats *types.RequestStats, hookConfig *hooks.HookConfig) {
-	for i, c := range conns {
-		logging.Logf(types.LogDebug, "Starting listener goroutine %d for %s", i, c.LocalAddr())
-		// Determine if this is IPv4 or IPv6 listener
-		localAddr, _ := c.LocalAddr().(*net.UDPAddr)
-		isIPv6 := localAddr != nil && localAddr.IP.To4() == nil
-		if isIPv6 {
-			logging.Logf(types.LogDebug, "Listener %d is IPv6, using IPv6 URLs and cache", i)
-			go discovery.ListenLoop(ctx, c, cfg.ServerURLv6, cfg.ProxyURLv6, cacheV6, ipBlacklist, requestStats, hookConfig)
-		} else {
-			logging.Logf(types.LogDebug, "Listener %d is IPv4, using IPv4 URLs and cache", i)
-			go discovery.ListenLoop(ctx, c, cfg.ServerURLv4, cfg.ProxyURLv4, cacheV4, ipBlacklist, requestStats, hookConfig)
-		}
-	}
+// startListener starts the UDP listener goroutine. It receives IPv4 discovery
+// requests and emits the primary response plus, when PROXY_URL_IPV6 is set,
+// a second response carrying the v6 URL.
+func startListener(ctx context.Context, conn *net.UDPConn, cfg *types.Config, serverCache *types.ServerInfoCache, ipBlacklist *types.IPBlacklist, requestStats *types.RequestStats, hookConfig *hooks.HookConfig) {
+	logging.Logf(types.LogDebug, "Starting listener goroutine for %s", conn.LocalAddr())
+	go discovery.ListenLoop(ctx, conn,
+		cfg.ServerURL, cfg.ProxyURL, cfg.ProxyURLv6,
+		serverCache,
+		ipBlacklist, requestStats, hookConfig)
 }
 
 // gracefulShutdown performs graceful shutdown of all services
-func gracefulShutdown(cancel context.CancelFunc, httpServer *http.Server, conns []*net.UDPConn) {
+func gracefulShutdown(cancel context.CancelFunc, httpServer *http.Server, conn *net.UDPConn) {
 	// Cancel context to signal goroutines to stop
 	cancel()
 
@@ -275,18 +221,10 @@ func gracefulShutdown(cancel context.CancelFunc, httpServer *http.Server, conns 
 		logging.Logf(types.LogWarn, "HTTP server shutdown error: %v", err)
 	}
 
-	// Close all UDP connections
-	closeConnections(conns)
+	// Close UDP connection
+	logging.Logf(types.LogInfo, "Closing UDP listener: %s", conn.LocalAddr())
+	conn.Close()
 
 	// Give goroutines a moment to finish
 	time.Sleep(100 * time.Millisecond)
-}
-
-// closeConnections closes all UDP connections
-func closeConnections(conns []*net.UDPConn) {
-	logging.Logln(types.LogInfo, "Closing UDP listeners")
-	for i, c := range conns {
-		logging.Logf(types.LogDebug, "Closing UDP listener %d: %s", i, c.LocalAddr())
-		c.Close()
-	}
 }

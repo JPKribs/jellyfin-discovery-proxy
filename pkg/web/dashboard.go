@@ -31,67 +31,48 @@ func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // DashboardHandler returns an HTTP handler for the dashboard
-func DashboardHandler(cacheV4, cacheV6 *types.ServerInfoCache, serverURLv4, serverURLv6, proxyURLv4, proxyURLv6 string, stats *types.RequestStats, blacklist *types.IPBlacklist, logBuffer *types.LogBuffer, version string) http.HandlerFunc {
+func DashboardHandler(serverCache *types.ServerInfoCache, serverURL, proxyURL, proxyURLv6 string, stats *types.RequestStats, blacklist *types.IPBlacklist, logBuffer *types.LogBuffer, version string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Get stats
 		lastReqTime, lastReqIP, totalReqs := stats.GetStats()
 
-		// Get cached IPv4 server info
-		serverInfoV4 := cacheV4.Get()
-		cachedIDv4 := "N/A"
-		cachedNamev4 := "N/A"
-		cacheAgev4 := "N/A"
+		serverInfo := serverCache.Get()
+		cachedID := "N/A"
+		cachedName := "N/A"
+		cacheAge := "N/A"
 
-		if serverInfoV4 != nil {
-			cachedIDv4 = serverInfoV4.Id
-			cachedNamev4 = serverInfoV4.ServerName
-			age := time.Since(cacheV4.Timestamp)
-			cacheAgev4 = age.Round(time.Second).String()
+		if serverInfo != nil {
+			cachedID = serverInfo.Id
+			cachedName = serverInfo.ServerName
+			cacheAge = time.Since(serverCache.Timestamp).Round(time.Second).String()
 		}
 
-		// Get cached IPv6 server info
-		serverInfoV6 := cacheV6.Get()
-		cachedIDv6 := "N/A"
-		cachedNamev6 := "N/A"
-		cacheAgev6 := "N/A"
-
-		if serverInfoV6 != nil {
-			cachedIDv6 = serverInfoV6.Id
-			cachedNamev6 = serverInfoV6.ServerName
-			age := time.Since(cacheV6.Timestamp)
-			cacheAgev6 = age.Round(time.Second).String()
-		}
-
-		// Format last request time
 		lastReqTimeStr := "Never"
 		if !lastReqTime.IsZero() {
 			lastReqTimeStr = lastReqTime.Format("2006-01-02 15:04:05")
 		}
 
-		// Calculate uptime
 		uptime := time.Since(StartTime).Round(time.Second).String()
-
-		// Get logs
 		logs := logBuffer.GetAll()
 
+		proxyURLv6Display := proxyURLv6
+		if proxyURLv6Display == "" {
+			proxyURLv6Display = "(not set)"
+		}
+
 		data := types.DashboardData{
-			Version:            version,
-			ServerURLv4:        serverURLv4,
-			ServerURLv6:        serverURLv6,
-			ProxyURLv4:         proxyURLv4,
-			ProxyURLv6:         proxyURLv6,
-			LastRequestTime:    lastReqTimeStr,
-			LastRequestIP:      lastReqIP,
-			TotalRequests:      totalReqs,
-			CachedServerIDv4:   cachedIDv4,
-			CachedServerNamev4: cachedNamev4,
-			CacheAgev4:         cacheAgev4,
-			CachedServerIDv6:   cachedIDv6,
-			CachedServerNamev6: cachedNamev6,
-			CacheAgev6:         cacheAgev6,
-			BlacklistedIPs:     blacklist.Count(),
-			Logs:               logs,
-			Uptime:             uptime,
+			Version:          version,
+			ServerURL:        serverURL,
+			ProxyURL:         proxyURL,
+			ProxyURLv6:       proxyURLv6Display,
+			LastRequestTime:  lastReqTimeStr,
+			LastRequestIP:    lastReqIP,
+			TotalRequests:    totalReqs,
+			CachedServerID:   cachedID,
+			CachedServerName: cachedName,
+			CacheAge:         cacheAge,
+			BlacklistedIPs:   blacklist.Count(),
+			Logs:             logs,
+			Uptime:           uptime,
 		}
 
 		t := template.Must(template.New("dashboard").Parse(dashboardHTML))
@@ -102,7 +83,6 @@ func DashboardHandler(cacheV4, cacheV6 *types.ServerInfoCache, serverURLv4, serv
 
 // StaticFileHandler serves static files (CSS, JS)
 func StaticFileHandler(w http.ResponseWriter, r *http.Request) {
-	// Map of file paths to content
 	files := map[string]struct {
 		content     string
 		contentType string

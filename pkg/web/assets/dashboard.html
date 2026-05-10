@@ -20,19 +20,15 @@
         <h2>Configuration</h2>
         <div class="info-grid">
             <div class="info-box">
-                <div class="info-label">IPv4 Server URL</div>
-                <div class="info-value">{{.ServerURLv4}}</div>
+                <div class="info-label">Server URL</div>
+                <div class="info-value">{{.ServerURL}}</div>
             </div>
             <div class="info-box">
-                <div class="info-label">IPv6 Server URL</div>
-                <div class="info-value">{{.ServerURLv6}}</div>
+                <div class="info-label">Proxy URL</div>
+                <div class="info-value">{{.ProxyURL}}</div>
             </div>
             <div class="info-box">
-                <div class="info-label">IPv4 Proxy URL</div>
-                <div class="info-value">{{.ProxyURLv4}}</div>
-            </div>
-            <div class="info-box">
-                <div class="info-label">IPv6 Proxy URL</div>
+                <div class="info-label">Proxy URL (IPv6)</div>
                 <div class="info-value">{{.ProxyURLv6}}</div>
             </div>
             <div class="info-box">
@@ -41,35 +37,19 @@
             </div>
         </div>
 
-        <h2>IPv4 Server Information</h2>
+        <h2>Server Information</h2>
         <div class="info-grid">
             <div class="info-box">
                 <div class="info-label">Server Name</div>
-                <div class="info-value">{{.CachedServerNamev4}}</div>
+                <div class="info-value">{{.CachedServerName}}</div>
             </div>
             <div class="info-box">
                 <div class="info-label">Server ID</div>
-                <div class="info-value">{{.CachedServerIDv4}}</div>
+                <div class="info-value">{{.CachedServerID}}</div>
             </div>
             <div class="info-box">
                 <div class="info-label">Cache Age</div>
-                <div class="info-value">{{.CacheAgev4}}</div>
-            </div>
-        </div>
-
-        <h2>IPv6 Server Information</h2>
-        <div class="info-grid">
-            <div class="info-box">
-                <div class="info-label">Server Name</div>
-                <div class="info-value">{{.CachedServerNamev6}}</div>
-            </div>
-            <div class="info-box">
-                <div class="info-label">Server ID</div>
-                <div class="info-value">{{.CachedServerIDv6}}</div>
-            </div>
-            <div class="info-box">
-                <div class="info-label">Cache Age</div>
-                <div class="info-value">{{.CacheAgev6}}</div>
+                <div class="info-value">{{.CacheAge}}</div>
             </div>
         </div>
 
